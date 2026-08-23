@@ -1,4 +1,4 @@
-# Next-Gen Cloud-Native Minecraft Hosting Platform
+# NeoMinecraftservermanager
 
 클라우드 네이티브 환경(Docker cgroups v2), 실시간 종량제 과금, 다층(Tiered) ZRAM/NVMe 메모리 방어 시스템, 통합 모드팩 임포터, 그리고 로컬 LLM 추론 기반 AI 렉 진단 파이프라인을 갖춘 엔터프라이즈급 마인크래프트 호스팅 플랫폼입니다.
 
@@ -6,8 +6,8 @@
 
 ## 📁 프로젝트 디렉토리 구조
 
-```
-nextgen-mc-platform/
+```text
+NeoMinecraftservermanager/
 ├── install.sh                                # 단일 실행 원클릭 설치 및 위저드 런처
 ├── setup-wizard/                             # 웹 기반 초기 설정 위저드
 │   ├── main.go                               # 경량 Go 웹 서버 (포트 8080)
@@ -53,15 +53,24 @@ nextgen-mc-platform/
 
 ---
 
-## 🚀 빠른 시작 (Single-Script Deployment)
+## 🚀 빠른 시작 (Deployment)
 
-### 1. 단일 명령어로 배포 및 셋업 위저드 실행
+### 옵션 1: 단일 명령어로 배포 및 셋업 위저드 자동 실행
+가장 빠르게 시스템을 구축하는 방법입니다. 아래 명령어를 실행하여 공식 저장소에서 설치 스크립트를 다운로드하고 즉시 실행합니다.
 ```bash
-curl -sSL https://domain/install.sh | sudo bash
+curl -sSL [https://raw.githubusercontent.com/gohefd321/NeoMinecraftservermanager/refs/heads/main/install.sh](https://raw.githubusercontent.com/gohefd321/NeoMinecraftservermanager/refs/heads/main/install.sh) | sudo bash
 ```
 
-### 2. 웹 브라우저에서 초기 위저드 완료
-브라우저를 열고 `http://<HOST_IP>:8080`에 접속하여 노드 역할(Master / Worker) 및 파라미터를 입력합니다. 설정 완료 즉시 systemd 백그라운드 서비스로 등록되어 자동 실행됩니다.
+### 옵션 2: Git 저장소 클론을 통한 수동 설치
+코드를 직접 확인하거나 수정 후 배포하려면 Git을 통해 저장소를 클론합니다.
+```bash
+git clone [https://github.com/gohefd321/NeoMinecraftservermanager.git](https://github.com/gohefd321/NeoMinecraftservermanager.git)
+cd NeoMinecraftservermanager
+sudo bash install.sh
+```
+
+### 3. 웹 브라우저에서 초기 위저드 완료
+설치 스크립트 실행 후 브라우저를 열고 `http://<HOST_IP>:8080`에 접속하여 노드 역할(Master / Worker) 및 파라미터를 입력합니다. 설정 완료 즉시 systemd 백그라운드 서비스로 등록되어 자동 실행됩니다.
 
 ---
 
@@ -99,4 +108,3 @@ curl -sSL https://domain/install.sh | sudo bash
 python3 -m pytest tests/test_platform.py -v
 ```
 모든 보안 살균, SSRF 차단, Path Traversal 방어, 노드 스케줄러 임계치, 과금 공식, 클라이언트 모드 필터링 테스트가 100% 통과합니다.
-# NeoMinecraftservermanager
