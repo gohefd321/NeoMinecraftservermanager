@@ -1,0 +1,17 @@
+[Unit]
+Description=NextGen MC Hosting Master Control Plane Daemon
+After=network.target docker.service redis.service postgresql.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/nextgen-mc-platform/backend
+EnvironmentFile=/etc/nextgen-mc/node.env
+ExecStart=/usr/bin/python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+Restart=always
+RestartSec=5s
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

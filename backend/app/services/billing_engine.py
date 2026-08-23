@@ -1,0 +1,167 @@
+"""
+billing_engine.py - Real-Time Pay-as-You-Go Billing Engine with Tiered Multipliers
+"""
+import json
+import asyncio
+from typing import Dict, Any, Optional
+from app.core.database import db
+from app.services.node_scheduler import scheduler
+
+# 1분당 기본 요율 (KRW 기준)
+BASE_CONTAINER_PER_MIN = 0.50   # 기본 컨테이너 유지비
+PER_CHUNK_RATE = 0.001          # 청크당 분당 요율
+PER_PLAYER_RATE = 0.10          # 플레이어 1인당 분당 요율
+
+LUA_DEDUCT_SCRIPT = """
+local balance = redis.call('GET', KEYS[1])
+if not balance then return {0, "0"} end
+local current_bal = tonumber(balance)
+local deduct_val = tonumber(ARGV[1])
+if current_bal >= deduct_val then
+    local new_bal = current_bal - deduct_val
+    redis.call('SET', KEYS[1], tostring(new_bal))
+    redis.call('HINCRBYFLOAT', 'wallet:pending_deltas', KEYS[1], -deduct_val)
+    return {1, tostring(new_bal)}
+else
+    return {0, tostring(current_bal)}
+end
+"""
+
+class BillingEngine:
+    def __init__(self):
+        self.lua_sha: Optional[str] = None
+
+    async def initialize(self):
+        if db.redis:
+            try:
+                self.lua_sha = await db.redis.script_load(LUA_DEDUCT_SCRIPT)
+            except Exception as e:
+                print(f"[WARN] Failed to load Lua script: {e}")
+
+    def compute_minute_cost(self, chunks: int, players: int, node_id: str) -> float:
+        """
+        노드 하드웨어 스펙 티어 배율(Standard 1.0x vs NVMe 1.3x vs Extreme 1.8x)이 적용된 1분 비용 산출
+        """
+        raw_cost = BASE_CONTAINER_PER_MIN + (chunks * PER_CHUNK_RATE) + (players * PER_PLAYER_RATE)
+        multiplier = scheduler.get_tier_multiplier(node_id)
+        final_cost = round(raw_cost * multiplier, 4)
+        return final_cost
+
+    async def handle_out_of_credit_shutdown(self, server_meta: Dict[str, Any]):
+        """
+        크레딧 잔액 소진 시 RCON 안전 종료 및 DB 상태 변경
+        """
+        server_id = server_meta.get("server_id")
+        host_ip = server_meta.get("host_ip", "127.0.0.1")
+        rcon_port = server_meta.get("rcon_port", 25575)
+        rcon_pass = server_meta.get("rcon_password", "")
+
+        print(f"[BILLING ALERT] Server {server_id} has exhausted credits! Executing Graceful Shutdown...")
+
+        try:
+            from aiomcrcon import Client as AsyncRconClient
+            async with AsyncRconClient(host_ip, rcon_port, rcon_pass) as rcon:
+                # 1. 인게임 타이틀 및 챗 경고
+                await rcon.send_cmd('title @a title {"text":"[과금 알림] 잔액 소진","color":"red","bold":true}')
+                await rcon.send_cmd('title @a subtitle {"text":"크레딧이 모두 소진되어 서버가 안전하게 종료됩니다.","color":"yellow"}')
+                await rcon.send_cmd('say [시스템] 10초 후 월드 데이터를 저장하고 서버를 일시 중지(SUSPENDED)합니다.')
+                
+                await asyncio.sleep(10)
+                
+                # 2. 월드 저장
+                await rcon.send_cmd('save-all')
+                await asyncio.sleep(3)
+                
+                # 3. 서버 정지
+                await rcon.send_cmd('stop')
+        except Exception as e:
+            print(f"[RCON Shutdown] Note: RCON command execution on {server_id}: {e}")
+
+        # DB 상태를 'SUSPENDED'로 변경
+        if db.pg_pool:
+            try:
+                async with db.pg_pool.acquire() as conn:
+                    await conn.execute(
+                        "UPDATE mc_servers SET status = 'SUSPENDED' WHERE id = $1",
+                        server_id
+                    )
+            except Exception as e:
+                print(f"[DB ERROR] Failed to update server status: {e}")
+
+    async def process_telemetry(self, data: Dict[str, Any]):
+        """
+        1분 단위 텔레메트리 데이터 수신 및 원자적 실시간 과금 수행
+        """
+        user_id = data["user_id"]
+        server_id = data["server_id"]
+        node_id = data.get("node_id", "default-node")
+        chunks = data.get("loaded_chunks", 0)
+        players = data.get("active_players", 0)
+        tps = data.get("tps", 20.0)
+
+        cost = self.compute_minute_cost(chunks, players, node_id)
+        wallet_key = f"wallet:balance:{user_id}"
+
+        # 1. Redis 인메모리 원자적 차감
+        status_code = 1
+        remaining_balance = 1000.0
+        if db.redis and self.lua_sha:
+            try:
+                res = await db.redis.evalsha(self.lua_sha, 1, wallet_key, str(cost))
+                status_code, remaining_balance = int(res[0]), float(res[1])
+            except Exception as e:
+                print(f"[Redis Lua] Evaluation error: {e}")
+
+        # 2. 텔레메트리 감사 로그 비동기 기록
+        if db.pg_pool:
+            try:
+                async with db.pg_pool.acquire() as conn:
+                    await conn.execute(
+                        """
+                        INSERT INTO telemetry_billing_logs 
+                        (server_id, user_id, timestamp, loaded_chunks, active_players, tps, cost_krw)
+                        VALUES ($1, $2, NOW(), $3, $4, $5, $6)
+                        """,
+                        server_id, user_id, chunks, players, tps, cost
+                    )
+            except Exception as e:
+                print(f"[DB Insert Telemetry Log Error]: {e}")
+
+        # 3. 크레딧 소진 판별
+        if status_code == 0 or remaining_balance <= 0.0:
+            server_meta = data.get("server_meta", {"server_id": server_id})
+            await self.handle_out_of_credit_shutdown(server_meta)
+
+    async def batch_sync_to_postgres(self):
+        """
+        10분 주기 Redis pending deltas -> PostgreSQL 영구 장부 동기화
+        """
+        while True:
+            await asyncio.sleep(600)  # 10분
+            if not db.redis or not db.pg_pool:
+                continue
+
+            try:
+                deltas = await db.redis.hgetall("wallet:pending_deltas")
+                if not deltas:
+                    continue
+
+                async with db.pg_pool.acquire() as conn:
+                    async with conn.transaction():
+                        for wallet_key, delta_str in deltas.items():
+                            user_id = wallet_key.split(":")[-1]
+                            delta_val = float(delta_str)
+                            await conn.execute(
+                                """
+                                UPDATE credit_wallets 
+                                SET balance_krw = balance_krw + $1, last_synced_at = NOW()
+                                WHERE user_id = $2
+                                """,
+                                delta_val, user_id
+                            )
+                await db.redis.delete("wallet:pending_deltas")
+                print(f"[Billing Sync] Flushed {len(deltas)} user balances to PostgreSQL.")
+            except Exception as e:
+                print(f"[Billing Sync ERROR] {e}")
+
+billing_engine = BillingEngine()
