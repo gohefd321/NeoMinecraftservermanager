@@ -58,13 +58,13 @@ NeoMinecraftservermanager/
 ### 옵션 1: 단일 명령어로 배포 및 셋업 위저드 자동 실행
 가장 빠르게 시스템을 구축하는 방법입니다. 아래 명령어를 실행하여 공식 저장소에서 설치 스크립트를 다운로드하고 즉시 실행합니다.
 ```bash
-curl -sSL [https://raw.githubusercontent.com/gohefd321/NeoMinecraftservermanager/refs/heads/main/install.sh](https://raw.githubusercontent.com/gohefd321/NeoMinecraftservermanager/refs/heads/main/install.sh) | sudo bash
+curl -sSL https://raw.githubusercontent.com/gohefd321/NeoMinecraftservermanager/refs/heads/main/install.sh | sudo bash
 ```
 
 ### 옵션 2: Git 저장소 클론을 통한 수동 설치
 코드를 직접 확인하거나 수정 후 배포하려면 Git을 통해 저장소를 클론합니다.
 ```bash
-git clone [https://github.com/gohefd321/NeoMinecraftservermanager.git](https://github.com/gohefd321/NeoMinecraftservermanager.git)
+git clone https://github.com/gohefd321/NeoMinecraftservermanager.git
 cd NeoMinecraftservermanager
 sudo bash install.sh
 ```
