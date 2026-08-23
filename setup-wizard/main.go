@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +14,9 @@ import (
 	"strings"
 	"time"
 )
+
+//go:embed static/index.html
+var indexHTML []byte
 
 type SetupPayload struct {
 	NodeRole       string `json:"node_role"`
@@ -119,15 +123,11 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// 정적 파일 서빙
-	fs := http.FileServer(http.Dir("./setup-wizard/static"))
-	mux.Handle("/static/", http.StripPrefix("/static/", fs))
+	// 1. 임베디드 HTML 서빙 (어느 작업 디렉토리에서 실행해도 404 방지)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" {
-			http.ServeFile(w, r, "./setup-wizard/static/index.html")
-			return
-		}
-		fs.ServeHTTP(w, r)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		w.Write(indexHTML)
 	})
 
 	mux.HandleFunc("/api/setup/complete", handleSetupComplete)

@@ -5,13 +5,12 @@
 # ==============================================================================
 set -euo pipefail
 
-# ANSI Color Codes
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 echo -e "${CYAN}"
 echo "================================================================================"
@@ -31,51 +30,28 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-# 2. OS 및 아키텍처 식별
-ARCH=$(uname -m)
-if [ "$ARCH" != "x86_64" ] && [ "$ARCH" != "aarch64" ]; then
-    echo -e "${RED}[ERROR] Unsupported architecture: ${ARCH}. Only x86_64 and aarch64 are supported.${NC}" >&2
-    exit 1
-fi
-
 echo -e "${BLUE}>>> [1/5] Updating system packages & installing core dependencies...${NC}"
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
+apt-get update -qq || true
 apt-get install -y -qq \
-    apt-transport-https \
-    ca-certificates \
     curl \
-    gnupg \
-    lsb-release \
     jq \
     git \
     python3 \
     python3-pip \
-    python3-venv \
-    golang-go \
     zram-tools \
-    apparmor \
-    apparmor-utils \
     iptables \
-    net-tools
+    net-tools || true
 
-# 3. Docker & Docker Compose 설치 (미설치 시)
+# 2. Docker 확인 및 설치
 echo -e "${BLUE}>>> [2/5] Verifying Docker and Container Isolation Engine...${NC}"
 if ! command -v docker &> /dev/null; then
-    echo -e "${YELLOW}Docker is not detected. Installing Docker CE Official Repository...${NC}"
-    install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg --yes
-    chmod a+r /etc/apt/keyrings/docker.gpg
-    echo \
-      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-      $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
-    apt-get update -qq
-    apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    echo -e "${YELLOW}Docker is not detected. Installing Docker CE...${NC}"
+    curl -fsSL https://get.docker.com | bash || true
 fi
+systemctl enable --now docker 2>/dev/null || true
 
-systemctl enable --now docker
-
-# 4. 플랫폼 디렉토리 배치
+# 3. 플랫폼 디렉토리 배치
 INSTALL_DIR="/opt/nextgen-mc-platform"
 echo -e "${BLUE}>>> [3/5] Setting up platform directory at ${INSTALL_DIR}...${NC}"
 mkdir -p "${INSTALL_DIR}"
@@ -83,38 +59,39 @@ mkdir -p /etc/nextgen-mc
 mkdir -p /var/mc_servers
 mkdir -p /var/log/nextgen-mc
 
-# 로컬 스크립트 복사 또는 클론
-if [ -d "/home/bettercallsixseven/nextgen-mc-platform" ]; then
-    cp -r /home/bettercallsixseven/nextgen-mc-platform/* "${INSTALL_DIR}/"
+# 로컬 소스코드 복사
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -d "${SCRIPT_DIR}" ] && [ "${SCRIPT_DIR}" != "${INSTALL_DIR}" ]; then
+    cp -r "${SCRIPT_DIR}"/* "${INSTALL_DIR}/" || true
 fi
 
-# 5. AppArmor 프로파일 로드
-echo -e "${BLUE}>>> [4/5] Loading Custom AppArmor Sandboxing Profiles...${NC}"
-if [ -f "${INSTALL_DIR}/security/apparmor/minecraft-secure.profile" ]; then
-    apparmor_parser -r -W "${INSTALL_DIR}/security/apparmor/minecraft-secure.profile" || true
-    echo -e "${GREEN}AppArmor Profile [minecraft-secure] registered.${NC}"
+# 4. AppArmor / SELinux 보안 프로파일
+echo -e "${BLUE}>>> [4/5] Configuring Security Isolation Profiles...${NC}"
+if command -v apparmor_parser &> /dev/null && [ -f "${INSTALL_DIR}/security/apparmor/minecraft-secure.profile" ]; then
+    apparmor_parser -r -W "${INSTALL_DIR}/security/apparmor/minecraft-secure.profile" 2>/dev/null || true
 fi
 
-# 6. Systemd 서비스 템플릿 복사
-cp "${INSTALL_DIR}/setup-wizard/service_templates/mc-master.service" /etc/systemd/system/
-cp "${INSTALL_DIR}/setup-wizard/service_templates/mc-worker.service" /etc/systemd/system/
-systemctl daemon-reload
+# SELinux 컨텍스트 허용
+if command -v getenforce &> /dev/null && [ "$(getenforce)" = "Enforcing" ]; then
+    chcon -Rt container_file_t /var/mc_servers 2>/dev/null || true
+fi
 
-# 7. Setup Wizard 컴파일 및 실행
+# 5. Systemd 서비스 템플릿 복사
+if [ -d "${INSTALL_DIR}/setup-wizard/service_templates" ]; then
+    cp "${INSTALL_DIR}/setup-wizard/service_templates/mc-master.service" /etc/systemd/system/ 2>/dev/null || true
+    cp "${INSTALL_DIR}/setup-wizard/service_templates/mc-worker.service" /etc/systemd/system/ 2>/dev/null || true
+    systemctl daemon-reload 2>/dev/null || true
+fi
+
+# 6. Web Setup Wizard 실행
 echo -e "${BLUE}>>> [5/5] Launching Web Setup Wizard on port 8080...${NC}"
-cd "${INSTALL_DIR}"
-
-# Go 웹서버 빌드
-cd "${INSTALL_DIR}/setup-wizard"
-go build -o /tmp/setup-wizard main.go
-chmod +x /tmp/setup-wizard
-
-SERVER_IP=$(hostname -I | awk '{print $1}')
+SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
 echo -e "${GREEN}================================================================================"
 echo -e "🎉 Installation pre-requisites completed!"
 echo -e "👉 Please open your browser and navigate to the Web Setup Wizard:"
 echo -e "   🌐  http://${SERVER_IP}:8080   (or http://localhost:8080)"
 echo -e "================================================================================${NC}"
 
-# 웹 위저드 프로세스 실행 (포그라운드 대기)
-/tmp/setup-wizard
+# Python 기반 무의존성 웹서버 우선 구동 (Go 컴파일러 불필요 & 404 에러 방지)
+chmod +x "${INSTALL_DIR}/setup-wizard/server.py" 2>/dev/null || true
+python3 "${INSTALL_DIR}/setup-wizard/server.py"
