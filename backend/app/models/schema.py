@@ -73,7 +73,7 @@ class UserResponse(BaseModel):
     id: str
     email: str
     is_adult_verified: bool
-    created_at: datetime
+    created_at: datetime = Field(default_factory=datetime.utcnow)
     balance_krw: float = 0.0
 
 # ---------------------------------------------------------------------------
@@ -112,10 +112,26 @@ class ServerDeployRequest(BaseModel):
     mc_version: str = "1.20.4"
     allocated_ram_mb: int = Field(default=4096, ge=2048, le=32768)
     hardware_tier_preference: Optional[HardwareTier] = HardwareTier.HIGH_NVME
-    preferred_node_id: Optional[str] = None # 특정 노드(예: 마스터 로컬) 지정 가능
+    preferred_node_id: Optional[str] = None
     enable_crossplay: bool = True
     enable_zgc: bool = True
     modpack_url: Optional[str] = None
+
+class ServerResponse(BaseModel):
+    id: str
+    name: str
+    domain_slug: str
+    node_id: str
+    node_ip: str
+    port: int
+    rcon_port: int
+    server_type: ServerType
+    mc_version: str
+    allocated_ram_mb: int
+    status: ServerStatus
+    billing_multiplier: float
+    full_domain: str
+    is_local_master: bool = False
 
 class ServerControlRequest(BaseModel):
     action: str = Field(..., pattern=r"^(start|stop|restart|kill|backup)$")

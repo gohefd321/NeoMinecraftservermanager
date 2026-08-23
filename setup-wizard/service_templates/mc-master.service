@@ -9,8 +9,10 @@ User=root
 WorkingDirectory=/opt/nextgen-mc-platform/backend
 EnvironmentFile=-/etc/nextgen-mc/node.env
 Environment=PYTHONPATH=/opt/nextgen-mc-platform/backend
-# 가상환경 venv 파이썬 우선 사용, 없으면 시스템 파이썬 사용
-ExecStart=/bin/bash -c 'if [ -f /opt/nextgen-mc-platform/venv/bin/uvicorn ]; then exec /opt/nextgen-mc-platform/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4; elif command -v uvicorn &>/dev/null; then exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4; else exec python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4; fi'
+Environment=PORT=8005
+Environment=MASTER_PORT=8005
+# 포트 8005로 구동 (llama-server 8000 충돌 방지 및 가상환경 지원)
+ExecStart=/bin/bash -c 'PORT_VAL=${MASTER_PORT:-8005}; if [ -f /opt/nextgen-mc-platform/venv/bin/uvicorn ]; then exec /opt/nextgen-mc-platform/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port $PORT_VAL --workers 4; elif command -v uvicorn &>/dev/null; then exec uvicorn app.main:app --host 0.0.0.0 --port $PORT_VAL --workers 4; else exec python3 -m uvicorn app.main:app --host 0.0.0.0 --port $PORT_VAL --workers 4; fi'
 Restart=always
 RestartSec=5s
 LimitNOFILE=65536

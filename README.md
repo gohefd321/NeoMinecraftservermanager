@@ -1,110 +1,109 @@
-# NeoMinecraftservermanager
+# Next-Gen Cloud-Native Minecraft Hosting Platform
 
-클라우드 네이티브 환경(Docker cgroups v2), 실시간 종량제 과금, 다층(Tiered) ZRAM/NVMe 메모리 방어 시스템, 통합 모드팩 임포터, 그리고 로컬 LLM 추론 기반 AI 렉 진단 파이프라인을 갖춘 엔터프라이즈급 마인크래프트 호스팅 플랫폼입니다.
-
----
-
-## 📁 프로젝트 디렉토리 구조
-
-```text
-NeoMinecraftservermanager/
-├── install.sh                                # 단일 실행 원클릭 설치 및 위저드 런처
-├── setup-wizard/                             # 웹 기반 초기 설정 위저드
-│   ├── main.go                               # 경량 Go 웹 서버 (포트 8080)
-│   ├── static/index.html                     # 모던 Glassmorphism UI
-│   └── service_templates/                    # systemd 유닛 템플릿
-│       ├── mc-master.service
-│       └── mc-worker.service
-├── security/                                 # 보안 및 격리 프로필
-│   ├── apparmor/minecraft-secure.profile     # AppArmor 시스템콜/경로 격리
-│   ├── seccomp/minecraft-seccomp.json        # Seccomp 화이트리스트 필터
-│   └── rootless-docker-setup.sh              # Rootless Docker & 권한 분리
-├── scripts/                                  # 시스템 및 컨테이너 프로비저닝
-│   ├── provision-zram-tier.sh                # Tier 2 ZRAM + Tier 3 NVMe Swap 구성
-│   └── deploy-mc-sandbox.sh                  # Sandboxed Docker Container 배포기 (Gen-ZGC)
-├── backend/                                  # Master 노드 제어 평면 (FastAPI)
-│   ├── app/
-│   │   ├── main.py                           # API 엔트리포인트 및 라이프사이클
-│   │   ├── core/
-│   │   │   ├── config.py                     # 환경 설정
-│   │   │   ├── security.py                   # RCON/SSRF 방어, Path Traversal, JWT
-│   │   │   └── database.py                   # Postgres/Redis 연결 풀
-│   │   ├── models/
-│   │   │   └── schema.py                     # Pydantic v2 데이터 모델 (19세 인증 포함)
-│   │   ├── services/
-│   │   │   ├── billing_engine.py             # 1분 텔레메트리 & 차등 과금 & RCON Shutdown
-│   │   │   ├── node_scheduler.py             # 자원 가용성 체크 & Least-Loaded 스케줄러
-│   │   │   ├── modpack_importer.py           # Modrinth/CurseForge Zip Slip 방어 파서
-│   │   │   └── ai_profiler.py                # Spark 프로파일러 로컬 LLM 분석기
-│   │   └── api/
-│   │       ├── v1/
-│   │       │   ├── auth.py                   # Google OAuth & 19세 성인인증
-│   │       │   ├── nodes.py                  # Worker 헬스체크 및 어드민 뷰
-│   │       │   ├── servers.py                # 마인크래프트 서버 라이프사이클 & RCON
-│   │       │   └── modpacks.py               # 모드팩 임포트 및 검색
-│   │       └── routes.py
-│   └── requirements.txt
-├── worker/                                   # Worker 노드 데이터 평면
-│   ├── agent.py                              # Host/ZRAM 메트릭 수집 데몬
-│   └── requirements.txt
-└── tests/
-    └── test_platform.py                      # 보안, 스케줄러, 과금 자동화 테스트
-```
+클라우드 네이티브(Docker cgroups v2), 실시간 종량제 과금(Pay-as-you-go), 다층(Tiered) ZRAM/NVMe 메모리 방어 시스템, 통합 모드팩 임포터, 그리고 로컬 LLM 기반 AI 렉 진단 파이프라인을 갖춘 엔터프라이즈급 마인크래프트 호스팅 플랫폼입니다.
 
 ---
 
-## 🚀 빠른 시작 (Deployment)
+## 🌐 포트 및 서비스 엔드포인트 명세표
 
-### 옵션 1: 단일 명령어로 배포 및 셋업 위저드 자동 실행
-가장 빠르게 시스템을 구축하는 방법입니다. 아래 명령어를 실행하여 공식 저장소에서 설치 스크립트를 다운로드하고 즉시 실행합니다.
+기존 로컬 AI 추론 서버(`llama-server` :8000) 및 웹 프론트엔드(:3000)와의 충돌을 원천 방지하기 위해 **Master Control Plane 포트가 `8005`로 격리 배정**되었습니다.
+
+| 포트 (Port) | 프로토콜 | 서비스 / 역할 | 접속 URL 및 엔드포인트 | 설명 |
+| :--- | :---: | :--- | :--- | :--- |
+| **`8005`** | TCP | **Master Control Plane** | `http://<Master-IP>:8005/admin`<br>`http://<Master-IP>:8005/docs` | 중앙 API, **어드민 실시간 과금/노드 제어 대시보드**, 사용자 회원가입 |
+| **`8080`** *(또는 8081)* | TCP | **Setup Wizard** | `http://<Host-IP>:8080` | 초기 인프라 셋업 위저드 (설정 완료 시 자동 종료) |
+| **`25565`** | TCP | **Velocity Ingress (Java)** | `id.domain.com` *(포트 입력 불필요)* | L4 프록시. Master의 Redis 라우팅 맵을 읽어 실제 워커 포트로 동적 포워딩 |
+| **`19132`** | UDP | **Bedrock Ingress** | `id.domain.com:19132` | Geyser / Floodgate 크로스플레이 Bedrock UDP 라우팅 |
+| **`25565-25999`** | TCP | **Game Container Ports** | 워커 내부 바인딩 | 실제 도커 격리 마인크래프트 서버 컨테이너 포트 대역 |
+| **`25575-25999`** | TCP | **RCON Ports** | 내부 RCON 제어 | 콘솔 명령어 살균 실행 및 Graceful Shutdown용 |
+| **`6379`** | TCP | **Redis Cluster** | `localhost:6379` | 라우팅 맵, 1분 텔레메트리 큐, 실시간 인메모리 지갑 원장 |
+| **`5432`** | TCP | **PostgreSQL** | `localhost:5432` | 10분 주기 배치 영구 장부, 유저 성인인증, 서버 설정, 티켓 |
+
+---
+
+## 🚀 설치 및 관리 스크립트 사용법 (`install.sh`)
+
+단일 스크립트로 설치, 업데이트, 완전 삭제 후 재설치, 서비스 복구를 모두 처리할 수 있습니다.
+
+### 1. 첫 설치 및 대화형 메뉴 실행
 ```bash
-curl -sSL https://raw.githubusercontent.com/gohefd321/NeoMinecraftservermanager/refs/heads/main/install.sh | sudo bash
+sudo bash /home/bettercallsixseven/nextgen-mc-platform/install.sh
+# 또는 원격 단일 명령 실행:
+# curl -sSL https://domain/install.sh | sudo bash
 ```
 
-### 옵션 2: Git 저장소 클론을 통한 수동 설치
-코드를 직접 확인하거나 수정 후 배포하려면 Git을 통해 저장소를 클론합니다.
-```bash
-git clone https://github.com/gohefd321/NeoMinecraftservermanager.git
-cd NeoMinecraftservermanager
-sudo bash install.sh
-```
-
-### 3. 웹 브라우저에서 초기 위저드 완료
-설치 스크립트 실행 후 브라우저를 열고 `http://<HOST_IP>:8080`에 접속하여 노드 역할(Master / Worker) 및 파라미터를 입력합니다. 설정 완료 즉시 systemd 백그라운드 서비스로 등록되어 자동 실행됩니다.
+### 2. 옵션별 원클릭 실행 (CLI Flags)
+- **업데이트 및 재시작 (Update & Restart)**:
+  기존 설정과 월드 데이터를 100% 보존하면서 최신 코드와 디펜던시를 갱신하고 서비스를 재기동합니다.
+  ```bash
+  sudo ./install.sh --update
+  ```
+- **의존성·방화벽·서비스 즉시 복구 (Repair & Fix)**:
+  누락된 Python 패키지(`uvicorn`, `fastapi` 등)를 강제 설치하고, 방화벽 포트를 개방한 후 Master 서비스를 복구합니다.
+  ```bash
+  sudo ./install.sh --repair
+  ```
+- **완전 삭제 후 클린 재설치 (Clean Reinstall)**:
+  기존 컨테이너 및 설정을 깨끗하게 초기화하고 처음부터 새로 배포합니다.
+  ```bash
+  sudo ./install.sh --clean
+  ```
 
 ---
 
-## 🛡️ 핵심 기능 및 보안 아키텍처
+## 🛡️ 방화벽 수동 설정 가이드 (Firewall Guide)
 
-### 1. 다층(Tiered) 메모리 및 OOM 방어
-- **Tier 1 (RAM)**: 물리 할당 메모리 (컨테이너당 `--memory=4096m`).
-- **Tier 2 (ZRAM)**: Host OS 커널에 LZ4 압축 알고리즘 적용 (우선순위 `32767`).
-- **Tier 3 (NVMe Swap)**: ZRAM 고갈 시 NVMe 스왑으로 롤오버 (우선순위 `10`).
-- **JVM 튜닝**: Java 21 Generational ZGC (`-XX:+UseZGC -XX:+ZGenerational`) 및 Aikar's Flags 자동 주입.
+`install.sh` 실행 시 방화벽이 자동으로 감지 및 개방되지만, 수동으로 확인하거나 개방할 경우 아래 명령어를 사용하십시오.
 
-### 2. 원격 코드 실행(RCE) 및 해킹 방어
-- **RCON 명령어 살균**: CRLF (`\r\n`), 세미콜론, 백틱, 쉘 파이프라인 인젝션 차단 및 허용 명령어 화이트리스트 검증.
-- **SSRF 방어**: 모드팩 및 웹훅 URL 호출 시 RFC 1918 사설 IP 및 클라우드 메타데이터(169.254.169.254) 접근 차단.
-- **Zip Slip 방어**: `.mrpack` 및 `manifest.json` 임포트 시 `../` 경로 탈출 시도 원천 차단.
-- **도커 샌드박싱**: `cap-drop=ALL`, `--security-opt no-new-privileges:true`, AppArmor 및 Seccomp 프로파일 결합.
+### UFW (Ubuntu / Debian)
+```bash
+sudo ufw allow 8005/tcp comment "NextGen Master API"
+sudo ufw allow 8080:8085/tcp comment "Setup Wizard"
+sudo ufw allow 25565:25999/tcp comment "Minecraft Java & Containers"
+sudo ufw allow 19132/udp comment "Minecraft Bedrock UDP"
+sudo ufw reload
+```
 
-### 3. 실시간 종량제 과금 & 노드 차등 배율
-- **1분 단위 메트릭**: `Loaded Chunks` 및 `Active Players` 기반 실시간 요율 연산.
-- **하드웨어 티어별 배율**:
-  - Standard SSD: `1.0x`
-  - High NVMe: `1.3x`
-  - Extreme Dedicated: `1.8x`
-- **초고속 인메모리 차감**: Redis Lua Script로 원자적 차감 후 10분 주기 PostgreSQL 배치 동기화.
-- **Graceful Shutdown**: 잔여 크레딧 0원 도달 시 인게임 경고 타이머 -> `save-all` -> `stop` 순서로 데이터 유실 없는 안전 종료.
-
-### 4. 로컬 추론 기반 AI 렉 진단 파이프라인
-- 서버 TPS 저하 시 Spark Profiler 요약 데이터를 로컬 LLM(TabbyAPI / Llama-server)에 전달.
-- 병목 원인(엔티티 밀집, GC 지연, 모드 루프 등)을 인간의 언어로 진단하고 관리자 헬프데스크 티켓과 연동.
+### Firewalld (RHEL / CentOS / Rocky / Alma / Fedora)
+```bash
+sudo firewall-cmd --permanent --add-port=8005/tcp
+sudo firewall-cmd --permanent --add-port=8080-8085/tcp
+sudo firewall-cmd --permanent --add-port=25565-25999/tcp
+sudo firewall-cmd --permanent --add-port=19132/udp
+sudo firewall-cmd --reload
+```
 
 ---
 
-## 🧪 자동화 테스트 검증
+## 🖥️ 어드민 대시보드 (`/admin`) 사용법
+
+브라우저에서 **`http://<Master-IP>:8005/admin`** 에 접속합니다.
+
+1. **실시간 종량제 요율 동적 변경**:
+   - **기본 유지비**: 컨테이너 분당 기본 비용 (기본값: `0.50`원/분)
+   - **청크당 요율**: 로드된 활성 청크 1개당 요율 (기본값: `0.0010`원/청크/분)
+   - **플레이어당 요율**: 동시 접속자 1인당 요율 (기본값: `0.1000`원/명/분)
+   - **하드웨어 티어 배율**: Standard SSD(`1.0x`), High NVMe(`1.3x`), Extreme Dedicated(`1.8x`)
+   - 폼 입력 후 `과금 요율 즉시 저장`을 누르면 **실시간 텔레메트리 차감 연산에 즉시 100% 반영**됩니다.
+
+2. **Master-as-Worker (마스터 노드 컨테이너 구동)**:
+   - 마스터 노드 자체가 `MASTER+CONTAINER` 카드로 등록되어 있어, 별도의 워커 노드가 없는 단일 서버에서도 마스터 노드에서 직접 안전한 AppArmor 샌드박스 컨테이너가 배포 및 구동됩니다.
+   - 개별 노드 카드의 `배율 수정` 버튼을 눌러 특정 노드의 과금 배율만 즉석 변경할 수 있습니다.
+
+---
+
+## ⚙️ 서비스 상태 제어 및 트러블슈팅
+
 ```bash
-python3 -m pytest tests/test_platform.py -v
+# Master 서비스 상태 확인
+sudo systemctl status mc-master
+
+# Master 서비스 재시작
+sudo systemctl restart mc-master
+
+# 실시간 로그 확인
+sudo journalctl -u mc-master -f -n 50
+
+# API 헬스체크
+curl http://localhost:8005/health
 ```
-모든 보안 살균, SSRF 차단, Path Traversal 방어, 노드 스케줄러 임계치, 과금 공식, 클라이언트 모드 필터링 테스트가 100% 통과합니다.

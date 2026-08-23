@@ -3,6 +3,7 @@ auth.py - Authentication with Google OAuth and 19+ Legal Age Verification
 """
 import uuid
 from datetime import datetime
+from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, status
 from app.models.schema import UserRegisterRequest, UserResponse
 from app.core.security import create_access_token
@@ -10,7 +11,7 @@ from app.core.database import db
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-@router.post("/register", response_model=Dict if False else Any)
+@router.post("/register")
 async def register_user(req: UserRegisterRequest):
     # 1. 19세 이상 법적 인증 필수 검증
     if not req.is_adult_verified:
@@ -21,7 +22,7 @@ async def register_user(req: UserRegisterRequest):
 
     user_id = str(uuid.uuid4())
     
-    # DB 저장
+    # PostgreSQL DB 저장
     if db.pg_pool:
         try:
             async with db.pg_pool.acquire() as conn:
@@ -43,7 +44,10 @@ async def register_user(req: UserRegisterRequest):
 
     # Redis 지갑 초기화
     if db.redis:
-        await db.redis.set(f"wallet:balance:{user_id}", "3000.0")
+        try:
+            await db.redis.set(f"wallet:balance:{user_id}", "3000.0")
+        except Exception:
+            pass
 
     token = create_access_token({"sub": user_id, "email": req.email, "is_adult": True})
     return {

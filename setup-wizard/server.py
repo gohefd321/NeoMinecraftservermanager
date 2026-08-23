@@ -49,7 +49,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     <label class="cursor-pointer border border-indigo-500 bg-indigo-950/40 rounded-xl p-4 flex flex-col items-center justify-center space-y-2 transition-all duration-200" id="masterCard">
                         <input type="radio" name="node_role" value="master" class="hidden" checked onchange="handleRoleChange('master')">
                         <span class="font-bold text-sm text-indigo-300">Master Node (대장)</span>
-                        <span class="text-[11px] text-slate-400 text-center">API 서버, 과금 엔진, 대시보드, 노드 스케줄러</span>
+                        <span class="text-[11px] text-slate-400 text-center">API 서버(:8005), 과금 엔진, 대시보드, 로컬 컨테이너</span>
                     </label>
                     <label class="cursor-pointer border border-slate-700 bg-slate-800/60 rounded-xl p-4 flex flex-col items-center justify-center space-y-2 transition-all duration-200" id="workerCard">
                         <input type="radio" name="node_role" value="worker" class="hidden" onchange="handleRoleChange('worker')">
@@ -75,7 +75,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div id="workerFields" class="space-y-3 hidden border-t border-slate-800 pt-3">
                 <div>
                     <label class="block text-xs font-medium text-slate-300 mb-1">Master 노드 API 주소</label>
-                    <input type="text" id="master_endpoint" name="master_endpoint" placeholder="http://192.168.1.100:8000" class="w-full px-3.5 py-2.5 rounded-lg bg-slate-900/80 border border-slate-700 text-sm focus:outline-none focus:border-indigo-500">
+                    <input type="text" id="master_endpoint" name="master_endpoint" placeholder="http://192.168.1.100:8005" class="w-full px-3.5 py-2.5 rounded-lg bg-slate-900/80 border border-slate-700 text-sm focus:outline-none focus:border-indigo-500">
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-300 mb-1">클러스터 보안 인증 토큰 (Cluster Secret)</label>
@@ -158,7 +158,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 const result = await resp.json();
                 if (resp.ok) {
                     statusBox.className = 'p-4 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-center text-xs';
-                    statusBox.innerHTML = `<strong>성공!</strong> ${result.message}<br>잠시 후 임시 웹 서버가 종료되고 서비스가 시작됩니다.`;
+                    statusBox.innerHTML = `<strong>성공!</strong> ${result.message}<br>잠시 후 임시 웹 서버가 종료되고 포트 8005에서 Master 서비스가 시작됩니다.`;
                     statusBox.classList.remove('hidden');
                 } else {
                     throw new Error(result.error || '설정 처리 중 오류가 발생했습니다.');
@@ -223,12 +223,14 @@ class SetupWizardHandler(BaseHTTPRequestHandler):
             env_lines = [
                 f"NODE_ROLE={node_role}",
                 f"NODE_NAME={node_name}",
-                f"NODE_ID={node_id}"
+                f"NODE_ID={node_id}",
+                "MASTER_PORT=8005",
+                "PORT=8005"
             ]
 
             if node_role == "worker":
                 tier = payload.get("hardware_tier", "standard_ssd")
-                endpoint = payload.get("master_endpoint", "http://localhost:8000")
+                endpoint = payload.get("master_endpoint", "http://localhost:8005")
                 token = payload.get("cluster_token", "")
                 env_lines.extend([
                     f"MASTER_ENDPOINT={endpoint}",
@@ -255,7 +257,7 @@ class SetupWizardHandler(BaseHTTPRequestHandler):
             service_name = "mc-worker" if node_role == "worker" else "mc-master"
             resp_payload = {
                 "status": "success",
-                "message": f"[{node_role.upper()}] 노드 구성이 완료되었습니다. '{service_name}' 서비스가 활성화됩니다."
+                "message": f"[{node_role.upper()}] 노드 구성이 완료되었습니다. 포트 8005에서 '{service_name}' 서비스가 활성화됩니다."
             }
             resp_bytes = json.dumps(resp_payload, ensure_ascii=False).encode("utf-8")
 
@@ -269,7 +271,7 @@ class SetupWizardHandler(BaseHTTPRequestHandler):
                 time.sleep(1.5)
                 subprocess.run(["systemctl", "daemon-reload"], check=False)
                 subprocess.run(["systemctl", "enable", "--now", service_name], check=False)
-                print(f"[Wizard] Activated {service_name}. Shutting down wizard server.")
+                print(f"[Wizard] Activated {service_name} on port 8005. Shutting down wizard server.")
                 os._exit(0)
 
             import threading
