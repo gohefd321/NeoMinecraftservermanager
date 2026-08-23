@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # NextGen Minecraft Cloud Platform - One-Click Installer & Provisioner
-# Usage: curl -sSL https://domain/install.sh | sudo bash
+# Usage: curl -sSL https://raw.githubusercontent.com/gohefd321/NeoMinecraftservermanager/refs/heads/main/install.sh | sudo bash
 # ==============================================================================
 set -euo pipefail
 
@@ -15,9 +15,9 @@ NC='\033[0m' # No Color
 
 echo -e "${CYAN}"
 echo "================================================================================"
-echo "   _  __         __  ____                       _____                                                            "
+echo "   _  __         __  ____                                    _____                                              "
 echo "  / |/ /__ ___  /  |/  (_)__  ___ ___________ _/ _/ /____ ___ _____  _____ ______ _  ___ ____  ___ ____ ____ ____"
-echo " /    / -_) _ \/ /|_/ / / _ \/ -_) __/ __/ _ `/ _/ __(_-</ -_) __/ |/ / -_) __/  ' \/ _ `/ _ \/ _ `/ _ `/ -_) __/"
+echo " /    / -_) _ \/ /|_/ / / _ \/ -_) __/ __/ _ \`/ _/ __(_-</ -_) __/ |/ / -_) __/  ' \/ _ \`/ _ \/ _ \`/ _ \`/ -_) __/"
 echo "/_/|_/\__/\___/_/  /_/_/_//_/\__/\__/_/  \_,_/_/ \__/___/\__/_/  |___/\__/_/ /_/_/_/\_,_/_//_/\_,_/\_, /\__/_/   "
 echo "                                                                                                  /___/          "
 echo "        Next-Gen Cloud-Native Minecraft Hosting Platform Installer             "
@@ -74,18 +74,27 @@ fi
 
 systemctl enable --now docker
 
-# 4. 플랫폼 디렉토리 배치
+# 4. 플랫폼 디렉토리 배치 및 Git 레포지토리 클론
 INSTALL_DIR="/opt/nextgen-mc-platform"
-echo -e "${BLUE}>>> [3/5] Setting up platform directory at ${INSTALL_DIR}...${NC}"
+echo -e "${BLUE}>>> [3/5] Setting up platform directory and cloning from GitHub...${NC}"
 mkdir -p "${INSTALL_DIR}"
 mkdir -p /etc/nextgen-mc
 mkdir -p /var/mc_servers
 mkdir -p /var/log/nextgen-mc
 
-# 로컬 스크립트 복사 또는 클론
-if [ -d "/home/bettercallsixseven/nextgen-mc-platform" ]; then
-    cp -r /home/bettercallsixseven/nextgen-mc-platform/* "${INSTALL_DIR}/"
-fi
+# 온라인 Git 레포지토리에서 코드 내려받기 (기존 로컬 복사 로직 대체)
+GIT_REPO_URL="https://github.com/gohefd321/NeoMinecraftservermanager.git"
+TMP_CLONE_DIR="/tmp/neo_mc_clone"
+
+echo "Cloning repository from: ${GIT_REPO_URL} ..."
+# 임시 디렉토리 초기화 후 Git Clone
+rm -rf "${TMP_CLONE_DIR}"
+git clone --quiet "${GIT_REPO_URL}" "${TMP_CLONE_DIR}"
+
+# 클론한 데이터를 실제 설치 디렉토리로 이동 (숨김 파일 포함)
+cp -r "${TMP_CLONE_DIR}"/. "${INSTALL_DIR}/"
+rm -rf "${TMP_CLONE_DIR}"
+echo -e "${GREEN}Successfully downloaded source code from GitHub.${NC}"
 
 # 5. AppArmor 프로파일 로드
 echo -e "${BLUE}>>> [4/5] Loading Custom AppArmor Sandboxing Profiles...${NC}"
@@ -95,16 +104,19 @@ if [ -f "${INSTALL_DIR}/security/apparmor/minecraft-secure.profile" ]; then
 fi
 
 # 6. Systemd 서비스 템플릿 복사
-cp "${INSTALL_DIR}/setup-wizard/service_templates/mc-master.service" /etc/systemd/system/
-cp "${INSTALL_DIR}/setup-wizard/service_templates/mc-worker.service" /etc/systemd/system/
-systemctl daemon-reload
+if [ -f "${INSTALL_DIR}/setup-wizard/service_templates/mc-master.service" ]; then
+    cp "${INSTALL_DIR}/setup-wizard/service_templates/mc-master.service" /etc/systemd/system/
+    cp "${INSTALL_DIR}/setup-wizard/service_templates/mc-worker.service" /etc/systemd/system/
+    systemctl daemon-reload
+else
+    echo -e "${YELLOW}Warning: Systemd templates not found. Setup wizard might fail if structure is incorrect.${NC}"
+fi
 
 # 7. Setup Wizard 컴파일 및 실행
 echo -e "${BLUE}>>> [5/5] Launching Web Setup Wizard on port 8080...${NC}"
-cd "${INSTALL_DIR}"
+cd "${INSTALL_DIR}/setup-wizard"
 
 # Go 웹서버 빌드
-cd "${INSTALL_DIR}/setup-wizard"
 go build -o /tmp/setup-wizard main.go
 chmod +x /tmp/setup-wizard
 
