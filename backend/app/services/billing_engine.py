@@ -1,16 +1,17 @@
 """
-billing_engine.py - Real-Time Pay-as-You-Go Billing Engine with Tiered Multipliers
+billing_engine.py - Real-Time Pay-as-You-Go Billing Engine with Dynamic Admin Rate Adjustments
+Features:
+- Dynamic Billing Rates (Base rate, Chunk rate, Player rate customizable in Admin Page)
+- Dynamic Tier Multipliers & Node-specific custom multipliers
+- Redis In-Memory Atomic Deduction (Lua Script) & 10-Min PostgreSQL Batch Flush
+- Out-of-Credit Graceful Shutdown via RCON
 """
 import json
 import asyncio
 from typing import Dict, Any, Optional
 from app.core.database import db
 from app.services.node_scheduler import scheduler
-
-# 1분당 기본 요율 (KRW 기준)
-BASE_CONTAINER_PER_MIN = 0.50   # 기본 컨테이너 유지비
-PER_CHUNK_RATE = 0.001          # 청크당 분당 요율
-PER_PLAYER_RATE = 0.10          # 플레이어 1인당 분당 요율
+from app.models.schema import BillingRateConfig, HardwareTier
 
 LUA_DEDUCT_SCRIPT = """
 local balance = redis.call('GET', KEYS[1])
@@ -30,19 +31,54 @@ end
 class BillingEngine:
     def __init__(self):
         self.lua_sha: Optional[str] = None
+        # 실시간 동적 과금 요율 (어드민 페이지에서 즉시 변경 가능)
+        self.rates: BillingRateConfig = BillingRateConfig()
 
     async def initialize(self):
         if db.redis:
             try:
                 self.lua_sha = await db.redis.script_load(LUA_DEDUCT_SCRIPT)
+                # Redis에 저장된 기존 요율 설정 불러오기
+                saved_rates_json = await db.redis.get("config:billing_rates")
+                if saved_rates_json:
+                    data = json.loads(saved_rates_json)
+                    self.rates = BillingRateConfig(**data)
+                    print(f"[BillingEngine] Loaded Dynamic Rates from Redis: Base={self.rates.base_container_per_min}, Chunk={self.rates.per_chunk_rate}, Player={self.rates.per_player_rate}")
             except Exception as e:
-                print(f"[WARN] Failed to load Lua script: {e}")
+                print(f"[BillingEngine Notice] Redis config initialization deferred: {e}")
+
+    async def update_billing_rates(self, new_config: BillingRateConfig) -> BillingRateConfig:
+        """어드민 대시보드에서 청크/플레이어/기본 단가 및 티어 배율 실시간 수정"""
+        self.rates = new_config
+        # Redis에 영구 보관
+        if db.redis:
+            try:
+                await db.redis.set("config:billing_rates", json.dumps(new_config.dict()))
+            except Exception as e:
+                print(f"[BillingEngine Error] Failed to persist billing rates to Redis: {e}")
+
+        # 노드 스케줄러의 기본 티어 배율 동기화
+        for tier_str, mult in new_config.tier_multipliers.items():
+            for node in scheduler.nodes.values():
+                if node.hardware_tier == tier_str:
+                    node.billing_multiplier = mult
+
+        print(f"[BillingEngine] 💰 Dynamic Billing Rates Updated: Base={self.rates.base_container_per_min} KRW/m, Chunk={self.rates.per_chunk_rate} KRW/m, Player={self.rates.per_player_rate} KRW/m")
+        return self.rates
+
+    def get_current_rates(self) -> BillingRateConfig:
+        return self.rates
 
     def compute_minute_cost(self, chunks: int, players: int, node_id: str) -> float:
         """
-        노드 하드웨어 스펙 티어 배율(Standard 1.0x vs NVMe 1.3x vs Extreme 1.8x)이 적용된 1분 비용 산출
+        어드민 설정 단가 및 노드 배율을 반영한 1분 과금액 연산
+        Cost = (Base_Rate + Chunks * Chunk_Rate + Players * Player_Rate) * Node_Multiplier
         """
-        raw_cost = BASE_CONTAINER_PER_MIN + (chunks * PER_CHUNK_RATE) + (players * PER_PLAYER_RATE)
+        base_rate = self.rates.base_container_per_min
+        chunk_rate = self.rates.per_chunk_rate
+        player_rate = self.rates.per_player_rate
+
+        raw_cost = base_rate + (chunks * chunk_rate) + (players * player_rate)
         multiplier = scheduler.get_tier_multiplier(node_id)
         final_cost = round(raw_cost * multiplier, 4)
         return final_cost
@@ -52,7 +88,7 @@ class BillingEngine:
         크레딧 잔액 소진 시 RCON 안전 종료 및 DB 상태 변경
         """
         server_id = server_meta.get("server_id")
-        host_ip = server_meta.get("host_ip", "127.0.0.1")
+        host_ip = server_meta.get("node_ip", "127.0.0.1")
         rcon_port = server_meta.get("rcon_port", 25575)
         rcon_pass = server_meta.get("rcon_password", "")
 
@@ -94,7 +130,7 @@ class BillingEngine:
         """
         user_id = data["user_id"]
         server_id = data["server_id"]
-        node_id = data.get("node_id", "default-node")
+        node_id = data.get("node_id", "master-local")
         chunks = data.get("loaded_chunks", 0)
         players = data.get("active_players", 0)
         tps = data.get("tps", 20.0)
