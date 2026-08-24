@@ -39,6 +39,11 @@ async def get_available_tiers():
     """모든 활성 과금 티어 목록 조회 (유저 서버 생성 시 선택 가능한 티어들)"""
     return scheduler.get_all_tiers()
 
+@router.get("/billing/rates", response_model=BillingRateConfig)
+async def get_public_billing_rates():
+    """실시간 과금 단가 공용 조회 (유저 예상 과금액 계산기용)"""
+    return billing_engine.get_current_rates()
+
 @router.post("/admin/tiers", response_model=CustomTierResponse, dependencies=[Depends(require_admin_auth)])
 async def create_custom_tier(payload: CustomTierCreate):
     """어드민 대시보드: 커스텀 하드웨어 티어 생성 및 특정 노드들 묶기 (인증 필수)"""
@@ -70,12 +75,12 @@ async def update_swap_configuration(payload: SwapConfigModel):
 # ---------------------------------------------------------------------------
 @router.get("/admin/billing/rates", response_model=BillingRateConfig, dependencies=[Depends(require_admin_auth)])
 async def get_current_billing_rates():
-    """어드민 대시보드: 현재 적용 중인 기본비, 청크당 요율, 플레이어당 요율 조회"""
+    """어드민 대시보드: 현재 적용 중인 기본비, RAM GB당 요율, 청크당 요율, 플레이어당 요율 조회"""
     return billing_engine.get_current_rates()
 
 @router.put("/admin/billing/rates", response_model=BillingRateConfig, dependencies=[Depends(require_admin_auth)])
 async def update_billing_rates(new_rates: BillingRateConfig):
-    """어드민 대시보드: 청크, 플레이어, 기본 유지비 실시간 변경"""
+    """어드민 대시보드: RAM GB당 단가, 청크, 플레이어, 기본 유지비 실시간 변경"""
     updated = await billing_engine.update_billing_rates(new_rates)
     return updated
 

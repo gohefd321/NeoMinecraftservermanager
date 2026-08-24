@@ -1,7 +1,7 @@
 """
 billing_engine.py - Real-Time Pay-as-You-Go Billing Engine with Dynamic Admin Rate Adjustments
 Features:
-- Dynamic Billing Rates (Base rate, Chunk rate, Player rate customizable in Admin Page)
+- Dynamic Billing Rates (Base rate, RAM rate, Chunk rate, Player rate customizable in Admin Page)
 - Dynamic Tier Multipliers & Node-specific custom multipliers
 - Redis In-Memory Atomic Deduction (Lua Script) & 10-Min PostgreSQL Batch Flush
 - Out-of-Credit Graceful Shutdown via RCON
@@ -43,12 +43,12 @@ class BillingEngine:
                 if saved_rates_json:
                     data = json.loads(saved_rates_json)
                     self.rates = BillingRateConfig(**data)
-                    print(f"[BillingEngine] Loaded Dynamic Rates from Redis: Base={self.rates.base_container_per_min}, Chunk={self.rates.per_chunk_rate}, Player={self.rates.per_player_rate}")
+                    print(f"[BillingEngine] Loaded Dynamic Rates from Redis: Base={self.rates.base_container_per_min}, RAM_GB={self.rates.per_ram_gb_rate}, Chunk={self.rates.per_chunk_rate}, Player={self.rates.per_player_rate}")
             except Exception as e:
                 print(f"[BillingEngine Notice] Redis config initialization deferred: {e}")
 
     async def update_billing_rates(self, new_config: BillingRateConfig) -> BillingRateConfig:
-        """어드민 대시보드에서 청크/플레이어/기본 단가 및 티어 배율 실시간 수정"""
+        """어드민 대시보드에서 RAM/청크/플레이어/기본 단가 및 티어 배율 실시간 수정"""
         self.rates = new_config
         # Redis에 영구 보관
         if db.redis:
@@ -63,25 +63,51 @@ class BillingEngine:
                 if node.hardware_tier == tier_str:
                     node.billing_multiplier = mult
 
-        print(f"[BillingEngine] 💰 Dynamic Billing Rates Updated: Base={self.rates.base_container_per_min} KRW/m, Chunk={self.rates.per_chunk_rate} KRW/m, Player={self.rates.per_player_rate} KRW/m")
+        print(f"[BillingEngine] 💰 Dynamic Billing Rates Updated: Base={self.rates.base_container_per_min} KRW/m, RAM_GB={self.rates.per_ram_gb_rate} KRW/m, Chunk={self.rates.per_chunk_rate} KRW/m, Player={self.rates.per_player_rate} KRW/m")
         return self.rates
 
     def get_current_rates(self) -> BillingRateConfig:
         return self.rates
 
-    def compute_minute_cost(self, chunks: int, players: int, node_id: str) -> float:
+    def compute_minute_cost(self, ram_mb: int, chunks: int, players: int, node_id: str) -> float:
         """
-        어드민 설정 단가 및 노드 배율을 반영한 1분 과금액 연산
-        Cost = (Base_Rate + Chunks * Chunk_Rate + Players * Player_Rate) * Node_Multiplier
+        점유/할당 RAM 및 어드민 설정 단가, 노드 배율을 반영한 1분 실제 과금액 연산
+        Cost = (Base_Rate + (RAM_GB * RAM_GB_Rate) + (Chunks * Chunk_Rate) + (Players * Player_Rate)) * Node_Multiplier
         """
         base_rate = self.rates.base_container_per_min
+        ram_gb = max(1.0, ram_mb / 1024.0)
+        ram_rate = self.rates.per_ram_gb_rate
         chunk_rate = self.rates.per_chunk_rate
         player_rate = self.rates.per_player_rate
 
-        raw_cost = base_rate + (chunks * chunk_rate) + (players * player_rate)
+        raw_cost = base_rate + (ram_gb * ram_rate) + (chunks * chunk_rate) + (players * player_rate)
         multiplier = scheduler.get_tier_multiplier(node_id)
         final_cost = round(raw_cost * multiplier, 4)
         return final_cost
+
+    def calculate_estimated_cost_per_min(self, ram_mb: int, tier_id: Optional[str] = None, multiplier: Optional[float] = None) -> float:
+        """
+        서버 개설 시 사용자와 어드민에게 보여줄 '1분당 예상 차감 요금' 계산
+        (유휴 기본 상태: 청크/플레이어 0 기준)
+        """
+        base_rate = self.rates.base_container_per_min
+        ram_gb = max(1.0, ram_mb / 1024.0)
+        ram_rate = self.rates.per_ram_gb_rate
+
+        raw_cost = base_rate + (ram_gb * ram_rate)
+        
+        mult = multiplier
+        if mult is None:
+            if tier_id and tier_id in scheduler.custom_tiers:
+                mult = scheduler.custom_tiers[tier_id].multiplier
+            elif tier_id == "high_nvme":
+                mult = 1.3
+            elif tier_id == "extreme_dedicated":
+                mult = 1.8
+            else:
+                mult = 1.0
+
+        return round(raw_cost * mult, 2)
 
     async def handle_out_of_credit_shutdown(self, server_meta: Dict[str, Any]):
         """
@@ -131,11 +157,12 @@ class BillingEngine:
         user_id = data["user_id"]
         server_id = data["server_id"]
         node_id = data.get("node_id", "master-local")
+        mem_used_mb = data.get("mem_used_mb", 4096)
         chunks = data.get("loaded_chunks", 0)
         players = data.get("active_players", 0)
         tps = data.get("tps", 20.0)
 
-        cost = self.compute_minute_cost(chunks, players, node_id)
+        cost = self.compute_minute_cost(mem_used_mb, chunks, players, node_id)
         wallet_key = f"wallet:balance:{user_id}"
 
         # 1. Redis 인메모리 원자적 차감

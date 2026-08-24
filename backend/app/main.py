@@ -2,16 +2,16 @@
 main.py - Master Node FastAPI Application Entrypoint
 Features:
 1. User Client Portal (/)
-   - No Admin Link exposed
-   - Error parser guarding against [object Object]
-   - Custom Domain Real-Time Duplication Checker & 1,000 KRW Credit Deduction
-   - Web File Explorer & Config Editor & File Upload/Download & 1-Click World Backup (.ZIP)
-   - Modrinth & CurseForge Mod/Modpack Marketplace (Prism Launcher Style)
+   - Integer RAM Input (1GB ~ 128GB direct input + slider)
+   - Real-Time 1-Minute / Hourly Estimated Cost Calculator (RAM-based Pricing)
+   - Custom Domain Duplication Check & Credit Deductions
+   - Web File Explorer & Config Editor & 1-Click World Backup (.ZIP)
+   - Modrinth & CurseForge Mod Marketplace (Prism Launcher Style)
 2. Master Admin Center (/admin)
    - Master Secret Authentication Gateway
+   - RAM-based Billing Rate Configuration (per_ram_gb_rate)
    - Dynamic Custom Tier Creator (Node Grouping)
-   - Global Memory & Swap (ZRAM/NVMe) Ratio Controls
-   - User Credit Management & AI Ticketing Helpdesk
+   - Global Memory & Swap (ZRAM/NVMe) Controls
 """
 import asyncio
 import os
@@ -52,7 +52,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                 <h1 class="text-xl font-extrabold text-white tracking-tight flex items-center gap-2">
                     NextGen MC <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-900/60 text-indigo-300 border border-indigo-500/30 uppercase">Cloud</span>
                 </h1>
-                <p class="text-[11px] text-slate-400">모드팩 마켓플레이스 • 파일 탐색기 • 실시간 종량제 마인크래프트 클라우드</p>
+                <p class="text-[11px] text-slate-400">자유로운 램 용량 조절 • 실시간 예상 과금액 계산기 • 점유 램 기반 종량제</p>
             </div>
         </div>
 
@@ -87,13 +87,13 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
     <div class="glass-card rounded-3xl p-6 md:p-10 bg-gradient-to-r from-indigo-950/40 via-slate-900 to-slate-900 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-2xl">
         <div class="space-y-3 max-w-2xl">
             <span class="px-3 py-1 rounded-full text-[11px] font-black bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 uppercase tracking-wider">
-                🧩 Prism Launcher 스타일 모드/모드팩 임포트 & 웹 파일 관리자
+                ⚡ 점유 램(RAM) 기반 실시간 종량제 과금 & 투명한 요율 계산기
             </span>
             <h2 class="text-3xl md:text-4xl font-black text-white leading-tight">
-                원하는 모드팩과 서버를<br><span class="gradient-text">원클릭으로 배포하고 관리하세요</span>
+                원하는 RAM 용량을 직접 정하고<br><span class="gradient-text">예상 과금액을 실시간 확인하세요</span>
             </h2>
             <p class="text-xs md:text-sm text-slate-400 leading-relaxed">
-                Modrinth & CurseForge 카탈로그 검색, 웹 파일 브라우저 및 config 편집기, 원클릭 월드 ZIP 백업, 포트 번호 없는 커스텀 접속 도메인을 지원합니다.
+                1GB부터 128GB까지 정수로 자유롭게 지정할 수 있으며, 실제 점유된 메모리와 로드된 청크에 따라 초 단위로 공정하게 차감됩니다.
             </p>
         </div>
         <div class="flex flex-col sm:flex-row gap-3">
@@ -160,7 +160,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div>
                     <h4 class="font-bold text-base text-white">✨ 마인크래프트 서버 개설 마법사</h4>
-                    <p class="text-[11px] text-slate-400">목적에 맞는 프리셋을 선택하거나 모든 구동기 및 버전을 자유롭게 설정하세요.</p>
+                    <p class="text-[11px] text-slate-400">목적에 맞는 프리셋을 선택하거나 램 용량 및 구동기를 자유롭게 설정하세요.</p>
                 </div>
                 <button onclick="closeCreateModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
             </div>
@@ -170,21 +170,21 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                 <div onclick="selectPreset('BUILDER_FLAT')" id="preset_BUILDER_FLAT" class="preset-card glass-card p-4 rounded-xl space-y-2">
                     <div class="text-2xl">🏰</div>
                     <div class="font-bold text-white text-xs">심플 건축 서버</div>
-                    <p class="text-[10px] text-slate-400 leading-tight">평지 맵 + WorldEdit + CoreProtect 자동 세팅 (1.20.4)</p>
+                    <p class="text-[10px] text-slate-400 leading-tight">평지 맵 + WorldEdit + CoreProtect (4GB RAM / 1.20.4)</p>
                     <span class="inline-block text-[9px] px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 font-semibold">초간편 원클릭</span>
                 </div>
 
                 <div onclick="selectPreset('SURVIVAL_SMP')" id="preset_SURVIVAL_SMP" class="preset-card active glass-card p-4 rounded-xl space-y-2">
                     <div class="text-2xl">🌲</div>
                     <div class="font-bold text-white text-xs">심플 야생 서버</div>
-                    <p class="text-[10px] text-slate-400 leading-tight">야생 맵 + EssentialsX (TPA/Home) + Spark 렉방지 (1.20.4)</p>
+                    <p class="text-[10px] text-slate-400 leading-tight">야생 맵 + EssentialsX (TPA/Home) (4GB RAM / 1.20.4)</p>
                     <span class="inline-block text-[9px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 font-semibold">인기 추천</span>
                 </div>
 
                 <div onclick="selectPreset('ADVANCED_CUSTOM')" id="preset_ADVANCED_CUSTOM" class="preset-card glass-card p-4 rounded-xl space-y-2">
                     <div class="text-2xl">⚙️</div>
                     <div class="font-bold text-white text-xs">고급 서버 개설</div>
-                    <p class="text-[10px] text-slate-400 leading-tight">26.2, 스냅샷, Purpur, Folia, Forge, Sponge, 바닐라 전체</p>
+                    <p class="text-[10px] text-slate-400 leading-tight">26.2, 스냅샷, RAM 직접 지정, 모든 구동기 완벽 지원</p>
                     <span class="inline-block text-[9px] px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 font-semibold">전문가용</span>
                 </div>
             </div>
@@ -216,8 +216,8 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                 </div>
 
                 <!-- Advanced Options Container -->
-                <div id="advancedOptions" class="hidden p-4 bg-slate-900/90 rounded-xl border border-indigo-500/30 space-y-3">
-                    <span class="font-bold text-indigo-300 text-xs flex items-center gap-1">⚙️ 고급 커스텀 환경설정</span>
+                <div id="advancedOptions" class="hidden p-4 bg-slate-900/90 rounded-xl border border-indigo-500/30 space-y-4">
+                    <span class="font-bold text-indigo-300 text-xs flex items-center gap-1">⚙️ 고급 커스텀 환경설정 & 램 정수 조절</span>
                     
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
@@ -259,25 +259,51 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block font-semibold text-slate-300 mb-1">할당 RAM 용량</label>
-                            <select id="srv_ram" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 outline-none font-mono">
-                                <option value="4096" selected>4 GB RAM (기본)</option>
-                                <option value="6144">6 GB RAM</option>
-                                <option value="8192">8 GB RAM (대형 서버)</option>
-                                <option value="16384">16 GB RAM (극대형 모드팩)</option>
-                            </select>
+                    <!-- Custom Integer RAM Allocation with Range & Number Input -->
+                    <div class="p-3.5 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2.5">
+                        <div class="flex items-center justify-between">
+                            <label class="font-bold text-slate-200 flex items-center gap-1.5">
+                                <span>🧠</span> 최대 RAM 할당 용량 (정수로 직접 지정)
+                            </label>
+                            <div class="flex items-center gap-1.5">
+                                <input type="number" id="srv_ram_gb" min="1" max="128" step="1" value="4" oninput="syncRamInput('number')" class="w-16 px-2 py-1 bg-slate-900 border border-indigo-500/50 rounded-lg text-white font-mono font-bold text-center outline-none focus:border-indigo-400">
+                                <span class="font-bold text-indigo-300">GB</span>
+                                <span class="text-slate-500 font-mono text-[10px]" id="ramMbTag">(4,096 MB)</span>
+                            </div>
                         </div>
-                        <div>
-                            <label class="block font-semibold text-slate-300 mb-1">하드웨어 과금 티어 (클러스터 노드)</label>
-                            <select id="srv_tier" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 outline-none">
-                                <option value="high_nvme">초고속 NVMe (1.3x)</option>
-                                <option value="standard_ssd">표준 SSD (1.0x)</option>
-                                <option value="extreme_dedicated">단독 전용 Extreme (1.8x)</option>
-                            </select>
+                        <input type="range" id="srv_ram_range" min="1" max="64" step="1" value="4" oninput="syncRamInput('range')" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+                        <div class="flex justify-between text-[10px] text-slate-500 font-mono">
+                            <span>1 GB (경량)</span>
+                            <span>4 GB (기본 권장)</span>
+                            <span>8 GB (모드팩)</span>
+                            <span>16 GB (대형)</span>
+                            <span>64 GB (극대형)</span>
                         </div>
                     </div>
+
+                    <div>
+                        <label class="block font-semibold text-slate-300 mb-1">하드웨어 과금 티어 (클러스터 노드)</label>
+                        <select id="srv_tier" onchange="updateEstimatedCost()" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 outline-none">
+                            <option value="high_nvme" data-multiplier="1.3">초고속 NVMe (1.3x)</option>
+                            <option value="standard_ssd" data-multiplier="1.0">표준 SSD (1.0x)</option>
+                            <option value="extreme_dedicated" data-multiplier="1.8">단독 전용 Extreme (1.8x)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Real-time Cost Estimation Box -->
+                <div class="p-4 bg-gradient-to-r from-indigo-950/50 via-slate-900 to-slate-900 rounded-xl border border-indigo-500/30 space-y-1.5">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
+                            <span>💰</span> 실시간 예상 과금액 (점유 RAM 기준)
+                        </span>
+                        <span class="text-base font-extrabold text-emerald-400 font-mono" id="estCostPerMin">약 0.52 KRW / 분</span>
+                    </div>
+                    <div class="flex items-center justify-between text-[11px] text-slate-400 font-mono pt-1 border-t border-slate-800/80">
+                        <span>1시간 예상: <strong class="text-slate-200" id="estCostPerHour">~31.2 KRW</strong></span>
+                        <span>24시간 예상: <strong class="text-slate-200" id="estCostPerDay">~748.8 KRW</strong></span>
+                    </div>
+                    <p class="text-[10px] text-slate-500 mt-0.5">※ 실제 과금은 서버가 활성화되어 점유된 램 용량 및 청크/플레이어 수에 따라 초 단위 종량제로 차감됩니다.</p>
                 </div>
 
                 <div class="pt-3 flex justify-end gap-2 border-t border-slate-800">
@@ -290,14 +316,14 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- Web File Explorer & Config Editor Modal -->
+    <!-- Web File Explorer Modal -->
     <div id="fileModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
         <div class="glass-card max-w-4xl w-full rounded-2xl p-6 space-y-4 shadow-2xl max-h-[90vh] flex flex-col">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div class="flex items-center gap-3">
                     <span class="text-xl">📁</span>
                     <div>
-                        <h4 class="font-bold text-sm text-white" id="fileModalTitle">서버 파일 탐색기 & 설정 에디터</h4>
+                        <h4 class="font-bold text-sm text-white" id="fileModalTitle">서버 파일 탐색기 & Config 에디터</h4>
                         <div class="flex items-center gap-1 text-[11px] text-slate-400 font-mono" id="fileBreadcrumbs">
                             <span>/</span>
                         </div>
@@ -330,7 +356,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                 </table>
             </div>
 
-            <!-- Text Config Editor View (Hidden by default) -->
+            <!-- Text Config Editor View -->
             <div id="fileEditorView" class="hidden flex-1 flex flex-col space-y-3">
                 <div class="flex items-center justify-between">
                     <span class="text-xs font-mono text-indigo-300" id="editingFilePath">server.properties</span>
@@ -439,6 +465,8 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
         let domainCheckTimer = null;
         let isDomainAvailable = false;
         let currentDetailModObj = null;
+        let billingRates = { base_container_per_min: 0.20, per_ram_gb_rate: 0.08 };
+        let activeTiersMap = {};
 
         function parseErrorMessage(data) {
             if (!data) return '알 수 없는 오류가 발생했습니다.';
@@ -476,8 +504,10 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
         function openCreateModal() {
             loadVersionOptions();
             loadActiveTiers();
+            loadBillingRates();
             document.getElementById('createModal').classList.remove('hidden');
             handleDomainInput();
+            updateEstimatedCost();
         }
         function closeCreateModal() { document.getElementById('createModal').classList.add('hidden'); }
         function logout() {
@@ -498,7 +528,58 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                 advBox.classList.remove('hidden');
             } else {
                 advBox.classList.add('hidden');
+                document.getElementById('srv_ram_gb').value = 4;
+                document.getElementById('srv_ram_range').value = 4;
             }
+            updateEstimatedCost();
+        }
+
+        function syncRamInput(source) {
+            const numInput = document.getElementById('srv_ram_gb');
+            const rangeInput = document.getElementById('srv_ram_range');
+            const tag = document.getElementById('ramMbTag');
+
+            let gbVal = source === 'number' ? parseInt(numInput.value || 1) : parseInt(rangeInput.value || 1);
+            if (isNaN(gbVal) || gbVal < 1) gbVal = 1;
+            if (gbVal > 128) gbVal = 128;
+
+            numInput.value = gbVal;
+            rangeInput.value = Math.min(gbVal, 64);
+            tag.innerText = `(${(gbVal * 1024).toLocaleString()} MB)`;
+
+            updateEstimatedCost();
+        }
+
+        async function loadBillingRates() {
+            try {
+                const resp = await fetch('/api/v1/nodes/billing/rates');
+                billingRates = await resp.json();
+                updateEstimatedCost();
+            } catch (e) {}
+        }
+
+        function updateEstimatedCost() {
+            const preset = document.getElementById('selected_preset').value;
+            let ramGb = 4;
+            let mult = 1.3;
+
+            if (preset === 'ADVANCED_CUSTOM') {
+                ramGb = parseInt(document.getElementById('srv_ram_gb').value || 4);
+                const tierSelect = document.getElementById('srv_tier');
+                const selectedOpt = tierSelect.options[tierSelect.selectedIndex];
+                mult = selectedOpt ? parseFloat(selectedOpt.getAttribute('data-multiplier') || 1.0) : 1.0;
+            }
+
+            const baseRate = billingRates.base_container_per_min || 0.20;
+            const ramRate = billingRates.per_ram_gb_rate || 0.08;
+
+            const costPerMin = (baseRate + (ramGb * ramRate)) * mult;
+            const costPerHour = costPerMin * 60;
+            const costPerDay = costPerHour * 24;
+
+            document.getElementById('estCostPerMin').innerText = `약 ${costPerMin.toFixed(2)} KRW / 분`;
+            document.getElementById('estCostPerHour').innerText = `~${costPerHour.toFixed(1)} KRW`;
+            document.getElementById('estCostPerDay').innerText = `~${costPerDay.toFixed(1)} KRW`;
         }
 
         function handleDomainInput() {
@@ -585,10 +666,13 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                 tiers.forEach(t => {
                     const opt = document.createElement('option');
                     opt.value = t.tier_id;
+                    opt.setAttribute('data-multiplier', t.multiplier);
                     opt.innerText = `${t.name} (${t.multiplier}x 배율)`;
                     if (t.tier_id === 'high_nvme') opt.selected = true;
                     select.appendChild(opt);
+                    activeTiersMap[t.tier_id] = t.multiplier;
                 });
+                updateEstimatedCost();
             } catch (e) {}
         }
 
@@ -653,7 +737,8 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
             if (preset === 'ADVANCED_CUSTOM') {
                 payload.server_type = document.getElementById('srv_type').value;
                 payload.mc_version = document.getElementById('srv_version').value;
-                payload.allocated_ram_mb = parseInt(document.getElementById('srv_ram').value);
+                const ramGb = parseInt(document.getElementById('srv_ram_gb').value || 4);
+                payload.allocated_ram_mb = ramGb * 1024;
                 payload.hardware_tier_preference = document.getElementById('srv_tier').value;
             } else {
                 payload.server_type = "PAPER";
@@ -718,13 +803,17 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                     presetBadge = '<span class="px-2 py-0.5 bg-purple-950 text-purple-300 rounded text-[10px] font-bold">⚙️ ' + srv.type + '</span>';
                 }
 
+                const ramGb = srv.ram / 1024;
+                const estMin = ((0.20 + (ramGb * 0.08)) * 1.3).toFixed(2);
+
                 card.innerHTML = `
                     <div class="flex items-center justify-between">
                         <div>
                             <span class="font-bold text-base text-white">${srv.name}</span>
                             <div class="flex items-center gap-1.5 mt-1">
                                 ${presetBadge}
-                                <span class="text-[10px] font-mono px-2 py-0.5 bg-slate-800 text-slate-300 rounded">${srv.type} ${srv.version} (${srv.ram / 1024}GB)</span>
+                                <span class="text-[10px] font-mono px-2 py-0.5 bg-slate-800 text-slate-300 rounded">${srv.type} ${srv.version} (${ramGb}GB RAM)</span>
+                                <span class="text-[10px] font-mono px-2 py-0.5 bg-indigo-950 text-indigo-300 border border-indigo-500/30 rounded font-semibold">약 ${estMin} KRW/분</span>
                             </div>
                         </div>
                         <span class="px-2.5 py-1 text-xs font-mono font-bold text-emerald-400 bg-emerald-950/80 rounded-full border border-emerald-500/30 flex items-center gap-1.5">
@@ -909,7 +998,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
         }
 
         // =========================================================================
-        // Mod & Modpack Marketplace Functions (Prism Launcher Style)
+        // Mod & Modpack Marketplace Functions
         // =========================================================================
         let targetServerForModInstall = null;
 
@@ -995,7 +1084,6 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                 document.getElementById('detailModAuthor').innerText = `by ${data.author} (${data.project_type.toUpperCase()})`;
                 document.getElementById('detailModStats').innerText = `다운로드: ${data.downloads.toLocaleString()}회 | 지원 로더: ${data.loaders.join(', ')}`;
                 
-                // Markdown 간단 포맷팅
                 const formattedHtml = data.body_markdown
                     .replace(/### (.*)/g, '<h4 class="font-bold text-white mt-3 mb-1 text-sm">$1</h4>')
                     .replace(/## (.*)/g, '<h3 class="font-extrabold text-white mt-4 mb-2 text-base">$1</h3>')
@@ -1145,7 +1233,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                 <span class="p-2 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-600/30">⚙️</span>
                 NextGen MC 어드민 통합 제어 센터
             </h1>
-            <p class="text-xs text-slate-400 mt-1">커스텀 티어 생성(노드 묶기) • 스왑/ZRAM 비율 설정 • 회원 관리 • 전체 서버 관리</p>
+            <p class="text-xs text-slate-400 mt-1">RAM 기반 요율 & 커스텀 티어 • 스왑/ZRAM 설정 • 회원 크레딧 • 전체 서버 관리</p>
         </div>
         <div class="flex items-center gap-3">
             <a href="/" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold">👉 유저 대시보드</a>
@@ -1156,7 +1244,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
     <!-- 5-Tab Navigation -->
     <div class="flex flex-wrap gap-2 border-b border-slate-800 pb-3">
         <button onclick="switchTab('billing')" id="tab_billing" class="tab-btn active px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-indigo-600 transition flex items-center gap-2">
-            💰 1. 과금 요율 & 커스텀 티어 & 스왑
+            💰 1. RAM 요율 & 커스텀 티어 & 스왑
         </button>
         <button onclick="switchTab('users')" id="tab_users" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-indigo-600 transition flex items-center gap-2">
             👥 2. 회원 계정 & 크레딧 관리
@@ -1176,14 +1264,19 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
     <div id="section_billing" class="space-y-6">
         <div class="card rounded-2xl p-6 space-y-5">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h3 class="font-bold text-white text-base">💰 실시간 종량제 기본 요율 설정</h3>
+                <h3 class="font-bold text-white text-base">💰 실시간 종량제 요율 설정 (RAM 및 컨테이너 단가)</h3>
                 <button onclick="loadBillingRates()" class="text-xs text-indigo-400 hover:underline">새로고침</button>
             </div>
-            <form id="ratesForm" class="grid grid-cols-1 md:grid-cols-3 gap-5 text-xs">
+            <form id="ratesForm" class="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
                 <div class="space-y-1.5">
                     <label class="font-bold text-slate-300 uppercase">기본 유지비 (분당 KRW)</label>
                     <input type="number" step="0.01" id="rate_base" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none" required>
                     <span class="text-slate-500 text-[10px]">컨테이너 기본 가동비</span>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="font-bold text-indigo-300 uppercase">점유 RAM 1GB당 요율 (분당 KRW)</label>
+                    <input type="number" step="0.01" id="rate_ram_gb" class="w-full px-3 py-2 bg-slate-900 border border-indigo-500 rounded-lg text-indigo-200 font-bold outline-none" required>
+                    <span class="text-slate-500 text-[10px]">1GB 메모리 점유당 단가</span>
                 </div>
                 <div class="space-y-1.5">
                     <label class="font-bold text-slate-300 uppercase">청크당 요율 (분당 KRW)</label>
@@ -1195,8 +1288,8 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                     <input type="number" step="0.01" id="rate_player" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none" required>
                     <span class="text-slate-500 text-[10px]">동시 접속자 1인당 단가</span>
                 </div>
-                <div class="md:col-span-3 flex justify-end">
-                    <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/30">기본 요율 저장</button>
+                <div class="md:col-span-4 flex justify-end">
+                    <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/30">요율 실시간 저장</button>
                 </div>
             </form>
         </div>
@@ -1370,16 +1463,12 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                     </select>
                 </div>
                 <div>
-                    <label class="block font-semibold text-slate-300 mb-1">마인크래프트 버전 (26.2, 스냅샷 가능)</label>
+                    <label class="block font-semibold text-slate-300 mb-1">마인크래프트 버전</label>
                     <input type="text" id="adm_ver" value="26.2" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono outline-none">
                 </div>
                 <div>
-                    <label class="block font-semibold text-slate-300 mb-1">할당 RAM</label>
-                    <select id="adm_ram" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none font-mono">
-                        <option value="4096">4 GB</option>
-                        <option value="8192" selected>8 GB</option>
-                        <option value="16384">16 GB</option>
-                    </select>
+                    <label class="block font-semibold text-slate-300 mb-1">최대 RAM 용량 (GB 정수 입력)</label>
+                    <input type="number" id="adm_ram_gb" min="1" max="128" value="8" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono outline-none font-bold">
                 </div>
                 <div class="md:col-span-3 flex justify-end">
                     <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/30">어드민 권한 서버 배포</button>
@@ -1548,6 +1637,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             if (resp.status === 401) { adminLogout(); return; }
             const d = await resp.json();
             document.getElementById('rate_base').value = d.base_container_per_min;
+            document.getElementById('rate_ram_gb').value = d.per_ram_gb_rate;
             document.getElementById('rate_chunk').value = d.per_chunk_rate;
             document.getElementById('rate_player').value = d.per_player_rate;
         }
@@ -1556,6 +1646,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             e.preventDefault();
             const payload = {
                 base_container_per_min: parseFloat(document.getElementById('rate_base').value),
+                per_ram_gb_rate: parseFloat(document.getElementById('rate_ram_gb').value),
                 per_chunk_rate: parseFloat(document.getElementById('rate_chunk').value),
                 per_player_rate: parseFloat(document.getElementById('rate_player').value)
             };
@@ -1564,7 +1655,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                 headers: getAuthHeaders(),
                 body: JSON.stringify(payload)
             });
-            alert('기본 과금 요율이 실시간 저장되었습니다!');
+            alert('기본 과금 요율(RAM 단가 포함)이 실시간 저장되었습니다!');
         });
 
         async function loadSwapConfig() {
@@ -1801,7 +1892,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                     <div class="flex justify-between items-center">
                         <div>
                             <span class="font-bold text-white text-sm">${s.name}</span>
-                            <span class="text-[11px] text-slate-400 font-mono ml-2">${s.server_type} ${s.mc_version} (${s.allocated_ram_mb}MB)</span>
+                            <span class="text-[11px] text-slate-400 font-mono ml-2">${s.server_type} ${s.mc_version} (${s.allocated_ram_mb / 1024}GB RAM)</span>
                         </div>
                         <span class="px-2 py-0.5 rounded font-mono font-bold ${s.status === 'RUNNING' ? 'bg-emerald-950 text-emerald-400' : 'bg-rose-950 text-rose-400'}">${s.status}</span>
                     </div>
@@ -1822,12 +1913,13 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
 
         document.getElementById('adminCreateForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const ramGb = parseInt(document.getElementById('adm_ram_gb').value || 4);
             const payload = {
                 name: document.getElementById('adm_name').value,
                 domain_slug: document.getElementById('adm_slug').value.trim().toLowerCase(),
                 server_type: document.getElementById('adm_core').value,
                 mc_version: document.getElementById('adm_ver').value,
-                allocated_ram_mb: parseInt(document.getElementById('adm_ram').value),
+                allocated_ram_mb: ramGb * 1024,
                 target_user_id: document.getElementById('adm_user').value || null
             };
             const resp = await fetch('/api/v1/servers/deploy', {
@@ -1921,7 +2013,7 @@ async def health_check():
         "status": "healthy",
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
-        "features": ["file_explorer", "world_backup_zip", "mod_marketplace", "domain_check"],
+        "features": ["integer_ram_input", "ram_based_billing", "cost_calculator", "file_explorer", "mod_marketplace"],
         "master_as_worker_active": "master-local" in scheduler.nodes
     }
 

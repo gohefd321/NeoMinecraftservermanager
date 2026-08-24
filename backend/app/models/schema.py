@@ -1,14 +1,10 @@
 """
 schema.py - Pydantic Request/Response Models and Enums (Pydantic v2 Compatible)
 Supports:
-- Comprehensive Server Types:
-  * Mainstream / High Performance: PAPER, PURPUR, FOLIA (Multi-threaded)
-  * Modded: FABRIC, FORGE (Official), NEOFORGE, SPONGE (SpongeVanilla)
-  * Classic & Official: VANILLA (Mojang Official), SPIGOT, CRAFTBUKKIT
-  * Proxies: VELOCITY (L4 Ingress), BUNGEECORD, WATERFALL
-- File Management (Explorer, Config Editor, Upload, World Download)
-- Modrinth / CurseForge Mod & Modpack Browser (Prism Launcher Style)
-- Domain Customization & Credit Deduction
+- RAM-based Pricing Calculation (per_ram_gb_rate) & Dynamic Tier Multipliers
+- Integer RAM Allocation (Custom RAM size in MB or GB)
+- Real-Time 1-Minute Estimated Cost Calculator
+- File Explorer & Mod Marketplace & Domain Checks
 """
 from enum import Enum
 from typing import List, Optional, Dict, Any, Union
@@ -91,12 +87,13 @@ class SwapConfigModel(BaseModel):
     enable_generational_zgc: bool = Field(default=True, description="JDK 21+ Generational ZGC 기본 활성화 여부")
 
 # ---------------------------------------------------------------------------
-# Dynamic Billing Configuration
+# Dynamic Billing Configuration (RAM-Based Pricing Included)
 # ---------------------------------------------------------------------------
 class BillingRateConfig(BaseModel):
-    base_container_per_min: float = Field(default=0.50, ge=0.0, le=100.0)
-    per_chunk_rate: float = Field(default=0.0010, ge=0.0, le=1.0)
-    per_player_rate: float = Field(default=0.1000, ge=0.0, le=1.0)
+    base_container_per_min: float = Field(default=0.20, ge=0.0, le=100.0, description="기본 컨테이너 유지비 (분당 KRW)")
+    per_ram_gb_rate: float = Field(default=0.08, ge=0.0, le=10.0, description="점유/할당 RAM 1GB당 분당 단가 (KRW)")
+    per_chunk_rate: float = Field(default=0.0005, ge=0.0, le=1.0, description="로드된 청크당 분당 단가 (KRW)")
+    per_player_rate: float = Field(default=0.0500, ge=0.0, le=1.0, description="동접 플레이어당 분당 단가 (KRW)")
     tier_multipliers: Dict[str, float] = Field(default_factory=dict)
 
 class NodeMultiplierUpdate(BaseModel):
@@ -166,7 +163,7 @@ class DomainCheckResponse(BaseModel):
     message: str
 
 # ---------------------------------------------------------------------------
-# Minecraft Server Models (Full Versions & Proxies)
+# Minecraft Server Models (Integer RAM direct input supported)
 # ---------------------------------------------------------------------------
 class ServerDeployRequest(BaseModel):
     name: str = Field(..., min_length=2, max_length=64)
@@ -174,7 +171,7 @@ class ServerDeployRequest(BaseModel):
     preset_type: ServerPreset = ServerPreset.SURVIVAL_SMP
     server_type: Union[ServerType, str] = ServerType.PAPER
     mc_version: str = Field(default="26.2")
-    allocated_ram_mb: int = Field(default=4096, ge=1024, le=65536)
+    allocated_ram_mb: int = Field(default=4096, ge=1024, le=131072, description="정수로 직접 지정하는 최대 램 용량 (MB 단위, 예: 4096, 6144, 8192, 12288, 16384)")
     hardware_tier_preference: Optional[str] = "high_nvme"
     preferred_node_id: Optional[str] = None
     target_user_id: Optional[str] = None
@@ -195,6 +192,7 @@ class ServerResponse(BaseModel):
     server_type: str
     mc_version: str
     allocated_ram_mb: int
+    estimated_cost_per_min: float = 0.0
     status: ServerStatus
     billing_multiplier: float
     full_domain: str
@@ -239,7 +237,7 @@ class ModSearchItem(BaseModel):
     icon_url: Optional[str] = None
     downloads: int = 0
     follows: int = 0
-    project_type: str = "mod" # mod or modpack
+    project_type: str = "mod"
     loaders: List[str] = Field(default_factory=list)
     game_versions: List[str] = Field(default_factory=list)
     categories: List[str] = Field(default_factory=list)
@@ -264,7 +262,7 @@ class ModDetailResponse(BaseModel):
 class ModInstallRequest(BaseModel):
     mod_id: str
     version_id: Optional[str] = None
-    project_type: str = "mod" # mod or modpack
+    project_type: str = "mod"
     download_url: Optional[str] = None
     filename: Optional[str] = None
 
