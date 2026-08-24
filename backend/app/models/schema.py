@@ -95,6 +95,7 @@ class SwapConfigModel(BaseModel):
 class BillingRateConfig(BaseModel):
     base_container_per_min: float = Field(default=0.20, ge=0.0, le=100.0)
     per_ram_gb_rate: float = Field(default=0.08, ge=0.0, le=10.0)
+    per_cpu_core_rate: float = Field(default=0.05, ge=0.0, le=10.0)
     per_chunk_rate: float = Field(default=0.0005, ge=0.0, le=1.0)
     per_player_rate: float = Field(default=0.0500, ge=0.0, le=1.0)
     tier_multipliers: Dict[str, float] = Field(default_factory=dict)
@@ -173,6 +174,7 @@ class ServerDeployRequest(BaseModel):
     server_type: Union[ServerType, str] = ServerType.PAPER
     mc_version: str = Field(default="26.2")
     allocated_ram_mb: int = Field(default=4096, ge=1024, le=131072)
+    allocated_cpu_cores: int = Field(default=2, ge=1, le=64)
     hardware_tier_preference: Optional[str] = "high_nvme"
     preferred_node_id: Optional[str] = None
     target_user_id: Optional[str] = None
@@ -193,11 +195,19 @@ class ServerResponse(BaseModel):
     server_type: str
     mc_version: str
     allocated_ram_mb: int
+    allocated_cpu_cores: int = 2
     estimated_cost_per_min: float = 0.0
     status: ServerStatus
     billing_multiplier: float
     full_domain: str
     is_local_master: bool = False
+
+class ServerLogResponse(BaseModel):
+    server_id: str
+    status: str
+    logs: List[str]
+    total_lines: int
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 class ServerVersionChangeRequest(BaseModel):
     server_type: str

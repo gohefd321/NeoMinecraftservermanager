@@ -69,23 +69,24 @@ class BillingEngine:
     def get_current_rates(self) -> BillingRateConfig:
         return self.rates
 
-    def compute_minute_cost(self, ram_mb: int, chunks: int, players: int, node_id: str) -> float:
+    def compute_minute_cost(self, ram_mb: int, chunks: int, players: int, node_id: str, cpu_cores: int = 2) -> float:
         """
-        점유/할당 RAM 및 어드민 설정 단가, 노드 배율을 반영한 1분 실제 과금액 연산
-        Cost = (Base_Rate + (RAM_GB * RAM_GB_Rate) + (Chunks * Chunk_Rate) + (Players * Player_Rate)) * Node_Multiplier
+        점유/할당 RAM 및 vCPU 코어, 어드민 설정 단가, 노드 배율을 반영한 1분 실제 과금액 연산
+        Cost = (Base_Rate + (RAM_GB * RAM_GB_Rate) + (CPU_Cores * CPU_Rate) + (Chunks * Chunk_Rate) + (Players * Player_Rate)) * Node_Multiplier
         """
         base_rate = self.rates.base_container_per_min
         ram_gb = max(1.0, ram_mb / 1024.0)
         ram_rate = self.rates.per_ram_gb_rate
+        cpu_rate = getattr(self.rates, "per_cpu_core_rate", 0.05)
         chunk_rate = self.rates.per_chunk_rate
         player_rate = self.rates.per_player_rate
 
-        raw_cost = base_rate + (ram_gb * ram_rate) + (chunks * chunk_rate) + (players * player_rate)
+        raw_cost = base_rate + (ram_gb * ram_rate) + (cpu_cores * cpu_rate) + (chunks * chunk_rate) + (players * player_rate)
         multiplier = scheduler.get_tier_multiplier(node_id)
         final_cost = round(raw_cost * multiplier, 4)
         return final_cost
 
-    def calculate_estimated_cost_per_min(self, ram_mb: int, tier_id: Optional[str] = None, multiplier: Optional[float] = None) -> float:
+    def calculate_estimated_cost_per_min(self, ram_mb: int, cpu_cores: int = 2, tier_id: Optional[str] = None, multiplier: Optional[float] = None) -> float:
         """
         서버 개설 시 사용자와 어드민에게 보여줄 '1분당 예상 차감 요금' 계산
         (유휴 기본 상태: 청크/플레이어 0 기준)
@@ -93,8 +94,9 @@ class BillingEngine:
         base_rate = self.rates.base_container_per_min
         ram_gb = max(1.0, ram_mb / 1024.0)
         ram_rate = self.rates.per_ram_gb_rate
+        cpu_rate = getattr(self.rates, "per_cpu_core_rate", 0.05)
 
-        raw_cost = base_rate + (ram_gb * ram_rate)
+        raw_cost = base_rate + (ram_gb * ram_rate) + (cpu_cores * cpu_rate)
         
         mult = multiplier
         if mult is None:

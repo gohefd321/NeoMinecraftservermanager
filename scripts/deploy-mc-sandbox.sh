@@ -19,6 +19,7 @@ SERVER_TYPE="${6:-PAPER}"
 MC_VERSION="${7:-26.2}"
 RCON_PASS="${8:-SafeRconKey999!}"
 ENABLE_CROSSPLAY="${9:-false}"
+CPU_CORES="${10:-2}"
 
 # 데이터 저장 디렉토리 생성 (권한 실패 시 fallback)
 DATA_DIR="/var/mc_servers/${SERVER_ID}"
@@ -99,14 +100,14 @@ docker rm -f "${SERVER_ID}" 2>/dev/null || true
 
 # 6. 프록시(Velocity/Bungee) 또는 게임 서버 분기 배포
 if [ "${SERVER_TYPE}" = "VELOCITY" ] || [ "${SERVER_TYPE}" = "BUNGEECORD" ] || [ "${SERVER_TYPE}" = "WATERFALL" ]; then
-    echo "Deploying High-Performance L4 Proxy (${SERVER_TYPE})..."
+    echo "Deploying High-Performance L4 Proxy (${SERVER_TYPE}) with ${CPU_CORES} vCPUs..."
     docker run -d \
         --name "${SERVER_ID}" \
         --restart unless-stopped \
         --memory="${RAM_MB}m" \
         --memory-swap="${SWAP_TOTAL_MB}m" \
         --oom-kill-disable \
-        --cpus="2.0" \
+        --cpus="${CPU_CORES}" \
         --cap-drop=ALL \
         --security-opt no-new-privileges:true \
         "${APPARMOR_ARG[@]}" \
@@ -124,7 +125,7 @@ if [ "${SERVER_TYPE}" = "VELOCITY" ] || [ "${SERVER_TYPE}" = "BUNGEECORD" ] || [
         --memory="${RAM_MB}m" \
         --memory-swap="${SWAP_TOTAL_MB}m" \
         --oom-kill-disable \
-        --cpus="2.0" \
+        --cpus="${CPU_CORES}" \
         -p "${HOST_PORT}:25565/tcp" \
         -p "${RCON_PORT}:25575/tcp" \
         -v "${DATA_DIR}:/data:rw" \
@@ -140,7 +141,7 @@ else
         --memory="${RAM_MB}m" \
         --memory-swap="${SWAP_TOTAL_MB}m" \
         --oom-kill-disable \
-        --cpus="4.0" \
+        --cpus="${CPU_CORES}" \
         --cap-drop=ALL \
         --security-opt no-new-privileges:true \
         "${APPARMOR_ARG[@]}" \

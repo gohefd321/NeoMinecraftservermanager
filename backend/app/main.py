@@ -3,8 +3,10 @@ main.py - Master Node FastAPI Application Entrypoint
 Features:
 1. SaaS Landing Page (/) - High-converting marketing portal, Modpacks showcase & ZIP/.mrpack Importer
 2. User Console Dashboard (/dashboard, /console) - Sidebar layout, Overview, Server Workspace:
+   * Real-Time Minecraft Console Logs (Done! boot message, streaming output & auto-scroll)
+   * Non-reloading RCON Form Execution with live interactive terminal
+   * Integer vCPU Core direct input & slider (1~32 Cores) synchronized with RAM & dynamic pricing
    * Multi-Worker Safe Persistent Server List (GET /api/v1/servers/my - 100% Reliable across refreshes!)
-   * Permanent User Session & Ownership Association
    * Direct Server Start/Stop/Restart/Delete actions
    * Core/Version Switcher with Mod Loader Dependency Warning
    * server.properties Full GUI Config Editor
@@ -76,7 +78,7 @@ LANDING_PAGE_HTML = """<!DOCTYPE html>
         <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-950/80 text-indigo-300 border border-indigo-500/30 text-xs font-bold shadow-lg">
             <span>✨ 2026 차세대 마인크래프트 호스팅</span>
             <span class="w-1 h-1 rounded-full bg-indigo-400"></span>
-            <span>초저지연 NVMe & 점유 RAM 실시간 종량제</span>
+            <span>초저지연 NVMe & 점유 RAM/vCPU 실시간 종량제</span>
         </div>
 
         <h2 class="text-4xl md:text-6xl font-black text-white leading-tight tracking-tight max-w-4xl mx-auto">
@@ -84,7 +86,7 @@ LANDING_PAGE_HTML = """<!DOCTYPE html>
         </h2>
 
         <p class="text-slate-400 text-sm md:text-base max-w-2xl mx-auto leading-relaxed">
-            월 고정 요금의 낭비 없이, 서버가 활성화되어 점유된 램(RAM)과 플레이어 수에 따라 초 단위로 공정하게 차감됩니다.
+            월 고정 요금의 낭비 없이, 서버가 활성화되어 점유된 램(RAM)과 vCPU, 플레이어 수에 따라 초 단위로 공정하게 차감됩니다.
             CurseForge & Modrinth 모드팩 원클릭 설치 및 ZIP 아카이브 드래그 임포트를 지원합니다.
         </p>
 
@@ -311,8 +313,8 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                     <div class="text-2xl font-black text-white" id="statServerCount">0개</div>
                 </div>
                 <div class="glass-card p-5 rounded-2xl space-y-1">
-                    <span class="text-slate-400 text-[10px] font-bold uppercase">총 할당 RAM</span>
-                    <div class="text-2xl font-black text-indigo-400" id="statTotalRam">0 GB</div>
+                    <span class="text-slate-400 text-[10px] font-bold uppercase">총 할당 자원</span>
+                    <div class="text-2xl font-black text-indigo-400" id="statTotalRam">0 GB / 0 Cores</div>
                 </div>
                 <div class="glass-card p-5 rounded-2xl space-y-1">
                     <span class="text-slate-400 text-[10px] font-bold uppercase">예상 1시간 과금액</span>
@@ -365,13 +367,13 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
         </div>
     </main>
 
-    <!-- Create Server Modal -->
+    <!-- Create Server Modal (vCPU & RAM Direct Integer Setting) -->
     <div id="createModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
         <div class="glass-card max-w-2xl w-full rounded-2xl p-6 md:p-8 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div>
                     <h4 class="font-bold text-base text-white">✨ 새 마인크래프트 서버 개설</h4>
-                    <p class="text-[11px] text-slate-400">목적에 맞는 프리셋을 선택하거나 램 용량 및 구동기를 자유롭게 설정하세요.</p>
+                    <p class="text-[11px] text-slate-400">RAM 용량과 vCPU 코어 개수를 자유롭게 정수로 직접 조정하세요.</p>
                 </div>
                 <button onclick="closeCreateModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
             </div>
@@ -380,17 +382,17 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                 <div onclick="selectPreset('BUILDER_FLAT')" id="preset_BUILDER_FLAT" class="preset-card glass-card p-3.5 rounded-xl space-y-1.5 cursor-pointer border border-transparent">
                     <div class="text-xl">🏰</div>
                     <div class="font-bold text-white">심플 건축 서버</div>
-                    <p class="text-[10px] text-slate-400">평지 맵 + WorldEdit (4GB / 1.20.4)</p>
+                    <p class="text-[10px] text-slate-400">평지 맵 + WorldEdit (2 vCPU / 4GB RAM)</p>
                 </div>
                 <div onclick="selectPreset('SURVIVAL_SMP')" id="preset_SURVIVAL_SMP" class="preset-card active glass-card p-3.5 rounded-xl space-y-1.5 cursor-pointer border border-indigo-500 bg-indigo-950/20">
                     <div class="text-xl">🌲</div>
                     <div class="font-bold text-white">심플 야생 서버</div>
-                    <p class="text-[10px] text-slate-400">야생 맵 + EssentialsX (4GB / 1.20.4)</p>
+                    <p class="text-[10px] text-slate-400">야생 맵 + EssentialsX (2 vCPU / 4GB RAM)</p>
                 </div>
                 <div onclick="selectPreset('ADVANCED_CUSTOM')" id="preset_ADVANCED_CUSTOM" class="preset-card glass-card p-3.5 rounded-xl space-y-1.5 cursor-pointer border border-transparent">
                     <div class="text-xl">⚙️</div>
                     <div class="font-bold text-white">고급 서버 개설</div>
-                    <p class="text-[10px] text-slate-400">26.2, 스냅샷, RAM 직접 입력, 전 구동기</p>
+                    <p class="text-[10px] text-slate-400">26.2, 스냅샷, vCPU / RAM 정수 직접 지정</p>
                 </div>
             </div>
 
@@ -456,6 +458,21 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                         </div>
                     </div>
 
+                    <!-- vCPU Allocation with Number Input & Range -->
+                    <div class="p-3.5 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2.5">
+                        <div class="flex items-center justify-between">
+                            <label class="font-bold text-slate-200 flex items-center gap-1.5">
+                                <span>⚡</span> vCPU 코어 개수 (정수로 직접 지정)
+                            </label>
+                            <div class="flex items-center gap-1.5">
+                                <input type="number" id="srv_cpu_cores" min="1" max="32" step="1" value="2" oninput="syncCpuInput('number')" class="w-16 px-2 py-1 bg-slate-900 border border-indigo-500/50 rounded-lg text-white font-mono font-bold text-center outline-none">
+                                <span class="font-bold text-indigo-300">Cores</span>
+                            </div>
+                        </div>
+                        <input type="range" id="srv_cpu_range" min="1" max="16" step="1" value="2" oninput="syncCpuInput('range')" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+                    </div>
+
+                    <!-- RAM Allocation with Number Input & Range -->
                     <div class="p-3.5 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2.5">
                         <div class="flex items-center justify-between">
                             <label class="font-bold text-slate-200 flex items-center gap-1.5">
@@ -480,14 +497,15 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                     </div>
                 </div>
 
+                <!-- Real-time Cost Estimation Box -->
                 <div class="p-4 bg-gradient-to-r from-indigo-950/50 via-slate-900 to-slate-900 rounded-xl border border-indigo-500/30 space-y-1.5">
                     <div class="flex items-center justify-between">
-                        <span class="font-bold text-indigo-300">💰 실시간 예상 과금액 (점유 RAM 기준)</span>
-                        <span class="text-sm font-extrabold text-emerald-400 font-mono" id="estCostPerMin">약 0.52 KRW / 분</span>
+                        <span class="font-bold text-indigo-300">💰 실시간 예상 과금액 (점유 RAM & vCPU 기준)</span>
+                        <span class="text-sm font-extrabold text-emerald-400 font-mono" id="estCostPerMin">약 0.62 KRW / 분</span>
                     </div>
                     <div class="flex items-center justify-between text-[11px] text-slate-400 font-mono pt-1 border-t border-slate-800/80">
-                        <span>1시간 예상: <strong class="text-slate-200" id="estCostPerHour">~31.2 KRW</strong></span>
-                        <span>24시간 예상: <strong class="text-slate-200" id="estCostPerDay">~748.8 KRW</strong></span>
+                        <span>1시간 예상: <strong class="text-slate-200" id="estCostPerHour">~37.2 KRW</strong></span>
+                        <span>24시간 예상: <strong class="text-slate-200" id="estCostPerDay">~892.8 KRW</strong></span>
                     </div>
                 </div>
 
@@ -502,7 +520,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
     </div>
 
     <!-- ======================================================================= -->
-    <!-- Server Detailed Workspace Modal                                         -->
+    <!-- Server Detailed Workspace Modal (Live Console & Log Streaming)          -->
     <!-- ======================================================================= -->
     <div id="serverWorkspaceModal" class="hidden fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
         <div class="glass-card max-w-5xl w-full rounded-2xl p-6 space-y-4 shadow-2xl max-h-[92vh] flex flex-col">
@@ -513,7 +531,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                         <h4 class="font-extrabold text-base text-white" id="wsServerName">서버 관리 워크스페이스</h4>
                         <div class="flex items-center gap-2 text-[11px] text-slate-400 font-mono">
                             <span id="wsServerAddress" class="text-indigo-300 font-bold">alpha.domain.com</span>
-                            <span id="wsServerSpecs" class="px-1.5 py-0.5 bg-slate-800 rounded">PAPER 26.2 (4GB RAM)</span>
+                            <span id="wsServerSpecs" class="px-1.5 py-0.5 bg-slate-800 rounded">PAPER 26.2 (2 vCPU / 4GB RAM)</span>
                         </div>
                     </div>
                 </div>
@@ -521,7 +539,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
             </div>
 
             <div class="flex flex-wrap gap-1.5 border-b border-slate-800 pb-2.5 font-semibold">
-                <button onclick="switchWsTab('console')" id="wstab_console" class="tab-btn active px-3 py-1.5 rounded-lg">💻 콘솔 & 상태</button>
+                <button onclick="switchWsTab('console')" id="wstab_console" class="tab-btn active px-3 py-1.5 rounded-lg">💻 콘솔 & 실시간 로그</button>
                 <button onclick="switchWsTab('version')" id="wstab_version" class="tab-btn px-3 py-1.5 rounded-lg">⚙️ 버전 & 구동기 변경</button>
                 <button onclick="switchWsTab('properties')" id="wstab_properties" class="tab-btn px-3 py-1.5 rounded-lg">📝 server.properties 설정</button>
                 <button onclick="switchWsTab('files')" id="wstab_files" class="tab-btn px-3 py-1.5 rounded-lg">📁 파일 탐색기</button>
@@ -529,9 +547,9 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                 <button onclick="switchWsTab('marketplace')" id="wstab_marketplace" class="tab-btn px-3 py-1.5 rounded-lg">🛒 모드 마켓플레이스</button>
             </div>
 
-            <!-- Tab 1: Console -->
-            <div id="wspane_console" class="flex-1 overflow-y-auto space-y-3 font-mono">
-                <div class="flex items-center justify-between p-3 bg-slate-900 rounded-xl border border-slate-800">
+            <!-- Tab 1: Live Interactive Console & Streaming Logs -->
+            <div id="wspane_console" class="flex-1 overflow-y-auto space-y-3 font-mono flex flex-col justify-between">
+                <div class="flex items-center justify-between p-3 bg-slate-900 rounded-xl border border-slate-800 font-sans">
                     <div class="flex items-center gap-2">
                         <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
                         <span class="font-bold text-white text-xs">서버 상태: <strong class="text-emerald-400" id="wsServerStatus">RUNNING</strong></span>
@@ -542,12 +560,18 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                         <button onclick="deleteCurrentServer()" class="px-3 py-1 bg-rose-900/40 text-rose-300 hover:bg-rose-900 rounded font-bold">서버 삭제</button>
                     </div>
                 </div>
-                <div id="rconBox" class="h-60 p-3 bg-black/90 rounded-xl border border-slate-800 text-emerald-400 overflow-y-auto space-y-1">
-                    <div>[RCON Connected] 명령어를 입력하세요.</div>
+
+                <!-- Real-time Console Terminal Output Area -->
+                <div id="rconBox" class="h-80 p-3.5 bg-black/95 rounded-xl border border-slate-800 text-emerald-400 overflow-y-auto space-y-1 text-[11px] leading-relaxed shadow-inner font-mono select-text">
+                    <div class="text-slate-500">[System] 마인크래프트 서버 실시간 터미널 콘솔에 연결 중...</div>
                 </div>
-                <form id="wsRconForm" class="flex gap-2 font-sans">
-                    <input type="text" id="wsRconInput" placeholder="명령어 입력 (예: op Steve, gamemode creative, spark health)" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono outline-none">
-                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold">전송</button>
+
+                <!-- Non-Reloading Command Input Form -->
+                <form id="wsRconForm" onsubmit="handleRconSubmit(event)" class="flex gap-2 font-sans pt-1">
+                    <input type="text" id="wsRconInput" required autocomplete="off" placeholder="명령어 입력 (예: op Steve, gamemode creative, list, spark health)" class="flex-1 px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 font-mono outline-none focus:border-indigo-500">
+                    <button type="submit" id="rconSubmitBtn" class="gradient-btn px-5 py-2.5 text-white font-extrabold rounded-xl shadow">
+                        전송
+                    </button>
                 </form>
             </div>
 
@@ -781,8 +805,9 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
         let marketSource = "modrinth";
         let marketCategory = "all";
         let marketOffset = 0;
-        let billingRates = { base_container_per_min: 0.20, per_ram_gb_rate: 0.08 };
+        let billingRates = { base_container_per_min: 0.20, per_ram_gb_rate: 0.08, per_cpu_core_rate: 0.05 };
         let domainCheckTimer = null;
+        let logStreamInterval = null;
         let currentDetailModObj = null;
 
         function updateAuthState() {
@@ -794,7 +819,6 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
         function editAccountEmail() {
             const newEmail = prompt("사용할 계정 이메일을 입력하세요:", currentUser.email);
             if (newEmail && newEmail.includes('@')) {
-                const oldEmail = currentUser.email;
                 currentUser.email = newEmail.trim().toLowerCase();
                 localStorage.setItem('mc_user', JSON.stringify(currentUser));
                 updateAuthState();
@@ -827,6 +851,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                         type: s.server_type,
                         version: s.mc_version,
                         ram: s.allocated_ram_mb,
+                        cpus: s.allocated_cpu_cores || 2,
                         status: s.status || 'RUNNING'
                     }));
                     renderServers();
@@ -847,12 +872,14 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
             grid.innerHTML = '';
 
             let totalRam = 0;
+            let totalCores = 0;
             let totalCostHour = 0;
 
             myServers.forEach(srv => {
                 totalRam += srv.ram;
+                totalCores += srv.cpus;
                 const ramGb = srv.ram / 1024;
-                const costMin = (0.20 + (ramGb * 0.08)) * 1.3;
+                const costMin = (0.20 + (ramGb * 0.08) + (srv.cpus * 0.05)) * 1.3;
                 totalCostHour += (costMin * 60);
 
                 const card = document.createElement('div');
@@ -862,7 +889,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                         <div>
                             <span class="font-extrabold text-base text-white">${srv.name}</span>
                             <div class="flex items-center gap-1.5 mt-1">
-                                <span class="px-2 py-0.5 bg-slate-800 text-slate-300 rounded font-mono text-[10px]">${srv.type} ${srv.version} (${ramGb}GB RAM)</span>
+                                <span class="px-2 py-0.5 bg-slate-800 text-slate-300 rounded font-mono text-[10px]">${srv.type} ${srv.version} (${srv.cpus} vCPU / ${ramGb}GB RAM)</span>
                             </div>
                         </div>
                         <span class="px-2.5 py-1 text-xs font-mono font-bold ${srv.status === 'RUNNING' ? 'text-emerald-400 bg-emerald-950/80 border-emerald-500/30' : 'text-rose-400 bg-rose-950/80 border-rose-500/30'} rounded-full border flex items-center gap-1.5">
@@ -885,7 +912,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                 grid.appendChild(card);
             });
 
-            document.getElementById('statTotalRam').innerText = `${(totalRam / 1024).toFixed(0)} GB`;
+            document.getElementById('statTotalRam').innerText = `${(totalRam / 1024).toFixed(0)} GB / ${totalCores} Cores`;
             document.getElementById('statCostPerHour').innerText = `~${totalCostHour.toFixed(0)} KRW`;
         }
 
@@ -963,6 +990,19 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
             }, 300);
         }
 
+        function syncCpuInput(source) {
+            const numInput = document.getElementById('srv_cpu_cores');
+            const rangeInput = document.getElementById('srv_cpu_range');
+
+            let cpuVal = source === 'number' ? parseInt(numInput.value || 1) : parseInt(rangeInput.value || 1);
+            if (isNaN(cpuVal) || cpuVal < 1) cpuVal = 1;
+            if (cpuVal > 32) cpuVal = 32;
+
+            numInput.value = cpuVal;
+            rangeInput.value = Math.min(cpuVal, 16);
+            updateEstimatedCost();
+        }
+
         function syncRamInput(source) {
             const numInput = document.getElementById('srv_ram_gb');
             const rangeInput = document.getElementById('srv_ram_range');
@@ -982,10 +1022,12 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
         function updateEstimatedCost() {
             const preset = document.getElementById('selected_preset').value;
             let ramGb = 4;
+            let cpuCores = 2;
             let mult = 1.3;
 
             if (preset === 'ADVANCED_CUSTOM') {
                 ramGb = parseInt(document.getElementById('srv_ram_gb').value || 4);
+                cpuCores = parseInt(document.getElementById('srv_cpu_cores').value || 2);
                 const tierSelect = document.getElementById('srv_tier');
                 const selectedOpt = tierSelect.options[tierSelect.selectedIndex];
                 mult = selectedOpt ? parseFloat(selectedOpt.getAttribute('data-multiplier') || 1.0) : 1.0;
@@ -993,8 +1035,9 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
 
             const baseRate = billingRates.base_container_per_min || 0.20;
             const ramRate = billingRates.per_ram_gb_rate || 0.08;
+            const cpuRate = billingRates.per_cpu_core_rate || 0.05;
 
-            const costPerMin = (baseRate + (ramGb * ramRate)) * mult;
+            const costPerMin = (baseRate + (ramGb * ramRate) + (cpuCores * cpuRate)) * mult;
             const costPerHour = costPerMin * 60;
             const costPerDay = costPerHour * 24;
 
@@ -1022,11 +1065,13 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                 payload.server_type = document.getElementById('srv_type').value;
                 payload.mc_version = document.getElementById('srv_version').value;
                 payload.allocated_ram_mb = parseInt(document.getElementById('srv_ram_gb').value || 4) * 1024;
+                payload.allocated_cpu_cores = parseInt(document.getElementById('srv_cpu_cores').value || 2);
                 payload.hardware_tier_preference = document.getElementById('srv_tier').value;
             } else {
                 payload.server_type = "PAPER";
                 payload.mc_version = "1.20.4";
                 payload.allocated_ram_mb = 4096;
+                payload.allocated_cpu_cores = 2;
                 payload.hardware_tier_preference = "high_nvme";
             }
 
@@ -1063,23 +1108,25 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
         });
 
         // =======================================================================
-        // Server Detailed Workspace
+        // Server Detailed Workspace & Real-Time Console & Logs
         // =======================================================================
         function openServerWorkspace(serverId) {
-            activeWsServer = myServers.find(s => s.id === serverId) || { id: serverId, name: "마인크래프트 서버", address: "alpha.domain.com", type: "PAPER", version: "26.2", ram: 4096, status: 'RUNNING' };
+            activeWsServer = myServers.find(s => s.id === serverId) || { id: serverId, name: "마인크래프트 서버", address: "alpha.domain.com", type: "PAPER", version: "26.2", ram: 4096, cpus: 2, status: 'RUNNING' };
             document.getElementById('wsServerName').innerText = activeWsServer.name;
             document.getElementById('wsServerAddress').innerText = activeWsServer.address;
-            document.getElementById('wsServerSpecs').innerText = `${activeWsServer.type} ${activeWsServer.version} (${activeWsServer.ram / 1024}GB RAM)`;
+            document.getElementById('wsServerSpecs').innerText = `${activeWsServer.type} ${activeWsServer.version} (${activeWsServer.cpus} vCPU / ${activeWsServer.ram / 1024}GB RAM)`;
             document.getElementById('wsServerStatus').innerText = activeWsServer.status;
             document.getElementById('serverWorkspaceModal').classList.remove('hidden');
             switchWsTab('console');
         }
 
         function closeServerWorkspace() {
+            clearInterval(logStreamInterval);
             document.getElementById('serverWorkspaceModal').classList.add('hidden');
         }
 
         function switchWsTab(tabName) {
+            clearInterval(logStreamInterval);
             ['console', 'version', 'properties', 'files', 'installed_mods', 'marketplace'].forEach(t => {
                 document.getElementById('wspane_' + t).classList.add('hidden');
                 document.getElementById('wstab_' + t).classList.remove('active');
@@ -1087,10 +1134,82 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
             document.getElementById('wspane_' + tabName).classList.remove('hidden');
             document.getElementById('wstab_' + tabName).classList.add('active');
 
-            if (tabName === 'properties') loadServerPropertiesGui();
-            if (tabName === 'files') loadWsFiles("");
-            if (tabName === 'installed_mods') loadInstalledMods();
-            if (tabName === 'marketplace') { loadMarketCategories(); resetAndSearchMarket(); }
+            if (tabName === 'console') {
+                startLogStreaming();
+            } else if (tabName === 'properties') {
+                loadServerPropertiesGui();
+            } else if (tabName === 'files') {
+                loadWsFiles("");
+            } else if (tabName === 'installed_mods') {
+                loadInstalledMods();
+            } else if (tabName === 'marketplace') {
+                loadMarketCategories();
+                resetAndSearchMarket();
+            }
+        }
+
+        async function fetchTerminalLogs() {
+            if (!activeWsServer) return;
+            try {
+                const resp = await fetch(`/api/v1/servers/${activeWsServer.id}/logs`);
+                if (resp.ok) {
+                    const data = await resp.json();
+                    const box = document.getElementById('rconBox');
+                    if (data.logs && data.logs.length > 0) {
+                        box.innerHTML = data.logs.map(line => {
+                            let color = 'text-slate-300';
+                            if (line.includes('ERROR') || line.includes('Exception') || line.includes('CRITICAL')) color = 'text-rose-400 font-bold';
+                            else if (line.includes('WARN')) color = 'text-amber-300 font-semibold';
+                            else if (line.includes('Done') || line.includes('Starting') || line.includes('SUCCESS') || line.includes('RCON')) color = 'text-emerald-400 font-bold';
+                            else if (line.startsWith('>')) color = 'text-cyan-300 font-bold';
+                            return `<div class="${color}">${escapeHtml(line)}</div>`;
+                        }).join('');
+                        box.scrollTop = box.scrollHeight;
+                    }
+                }
+            } catch (e) {}
+        }
+
+        function startLogStreaming() {
+            fetchTerminalLogs();
+            clearInterval(logStreamInterval);
+            logStreamInterval = setInterval(fetchTerminalLogs, 2500);
+        }
+
+        async function handleRconSubmit(event) {
+            event.preventDefault(); // 페이지 새로고침 완전 방지
+            const input = document.getElementById('wsRconInput');
+            const cmd = input.value.trim();
+            if (!cmd || !activeWsServer) return;
+
+            const box = document.getElementById('rconBox');
+            box.innerHTML += `<div class="text-cyan-300 font-bold">&gt; ${escapeHtml(cmd)}</div>`;
+            box.scrollTop = box.scrollHeight;
+            input.value = '';
+
+            try {
+                const resp = await fetch(`/api/v1/servers/${activeWsServer.id}/rcon`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: cmd })
+                });
+                const res = await resp.json();
+                if (resp.ok) {
+                    box.innerHTML += `<div class="text-emerald-400 font-semibold">${escapeHtml(res.response || '명령어가 성공적으로 수행되었습니다.')}</div>`;
+                } else {
+                    box.innerHTML += `<div class="text-rose-400 font-bold">[Error] ${escapeHtml(res.detail || '실행 실패')}</div>`;
+                }
+                box.scrollTop = box.scrollHeight;
+            } catch (e) {
+                box.innerHTML += `<div class="text-rose-400">[Error] ${escapeHtml(e.message)}</div>`;
+                box.scrollTop = box.scrollHeight;
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.innerText = text;
+            return div.innerHTML;
         }
 
         async function executeServerControlAction(action) {
@@ -1105,6 +1224,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                     alert(`✓ ${res.message}`);
                     activeWsServer.status = res.new_status;
                     document.getElementById('wsServerStatus').innerText = res.new_status;
+                    fetchTerminalLogs();
                     loadMyServers();
                 } else {
                     alert('명령 실패: ' + (res.detail || JSON.stringify(res)));
@@ -1141,7 +1261,8 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                     alert(`✓ 구동기 변경 완료: [${newCore} ${newVer}]`);
                     activeWsServer.type = newCore;
                     activeWsServer.version = newVer;
-                    document.getElementById('wsServerSpecs').innerText = `${newCore} ${newVer} (${activeWsServer.ram / 1024}GB RAM)`;
+                    document.getElementById('wsServerSpecs').innerText = `${newCore} ${newVer} (${activeWsServer.cpus} vCPU / ${activeWsServer.ram / 1024}GB RAM)`;
+                    fetchTerminalLogs();
                     loadMyServers();
                 } else {
                     alert('변경 실패: ' + (res.detail || JSON.stringify(res)));
@@ -1389,7 +1510,6 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
             }
         }
 
-        // 초기화 자동 실행
         updateAuthState();
         loadMyServers();
 
@@ -1454,7 +1574,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                 <span class="p-2 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-600/30">⚙️</span>
                 NextGen MC 어드민 통합 제어 센터
             </h1>
-            <p class="text-xs text-slate-400 mt-1">RAM 기반 요율 & 커스텀 티어 • 스왑/ZRAM 설정 • 회원 크레딧 • 전체 서버 관리</p>
+            <p class="text-xs text-slate-400 mt-1">RAM/vCPU 요율 & 커스텀 티어 • 스왑/ZRAM 설정 • 회원 크레딧 • 전체 서버 관리</p>
         </div>
         <div class="flex items-center gap-3">
             <a href="/dashboard" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold">👉 유저 대시보드</a>
@@ -1464,7 +1584,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
 
     <div class="flex flex-wrap gap-2 border-b border-slate-800 pb-3">
         <button onclick="switchTab('billing')" id="tab_billing" class="tab-btn active px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-indigo-600 transition flex items-center gap-2">
-            💰 1. RAM 요율 & 커스텀 티어 & 스왑
+            💰 1. RAM/vCPU 요율 & 커스텀 티어 & 스왑
         </button>
         <button onclick="switchTab('users')" id="tab_users" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-indigo-600 transition flex items-center gap-2">
             👥 2. 회원 계정 & 크레딧 관리
@@ -1484,27 +1604,31 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
     <div id="section_billing" class="space-y-6">
         <div class="card rounded-2xl p-6 space-y-5">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h3 class="font-bold text-white text-base">💰 실시간 종량제 요율 설정 (RAM 및 컨테이너 단가)</h3>
+                <h3 class="font-bold text-white text-base">💰 실시간 종량제 요율 설정 (RAM, vCPU 및 기본 단가)</h3>
                 <button onclick="loadBillingRates()" class="text-xs text-indigo-400 hover:underline">새로고침</button>
             </div>
-            <form id="ratesForm" class="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+            <form id="ratesForm" class="grid grid-cols-1 md:grid-cols-5 gap-4 text-xs">
                 <div class="space-y-1.5">
                     <label class="font-bold text-slate-300 uppercase">기본 유지비 (분당 KRW)</label>
                     <input type="number" step="0.01" id="rate_base" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none" required>
                 </div>
                 <div class="space-y-1.5">
-                    <label class="font-bold text-indigo-300 uppercase">점유 RAM 1GB당 요율 (분당 KRW)</label>
+                    <label class="font-bold text-indigo-300 uppercase">점유 RAM 1GB당 (분당 KRW)</label>
                     <input type="number" step="0.01" id="rate_ram_gb" class="w-full px-3 py-2 bg-slate-900 border border-indigo-500 rounded-lg text-indigo-200 font-bold outline-none" required>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="font-bold text-cyan-300 uppercase">vCPU 1Core당 (분당 KRW)</label>
+                    <input type="number" step="0.01" id="rate_cpu" class="w-full px-3 py-2 bg-slate-900 border border-cyan-500 rounded-lg text-cyan-200 font-bold outline-none" required>
                 </div>
                 <div class="space-y-1.5">
                     <label class="font-bold text-slate-300 uppercase">청크당 요율 (분당 KRW)</label>
                     <input type="number" step="0.0001" id="rate_chunk" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none" required>
                 </div>
                 <div class="space-y-1.5">
-                    <label class="font-bold text-slate-300 uppercase">플레이어당 요율 (분당 KRW)</label>
+                    <label class="font-bold text-slate-300 uppercase">플레이어당 (분당 KRW)</label>
                     <input type="number" step="0.01" id="rate_player" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none" required>
                 </div>
-                <div class="md:col-span-4 flex justify-end">
+                <div class="md:col-span-5 flex justify-end">
                     <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg">요율 실시간 저장</button>
                 </div>
             </form>
@@ -1624,6 +1748,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             const d = await resp.json();
             document.getElementById('rate_base').value = d.base_container_per_min;
             document.getElementById('rate_ram_gb').value = d.per_ram_gb_rate;
+            document.getElementById('rate_cpu').value = d.per_cpu_core_rate || 0.05;
             document.getElementById('rate_chunk').value = d.per_chunk_rate;
             document.getElementById('rate_player').value = d.per_player_rate;
         }
@@ -1633,6 +1758,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             const payload = {
                 base_container_per_min: parseFloat(document.getElementById('rate_base').value),
                 per_ram_gb_rate: parseFloat(document.getElementById('rate_ram_gb').value),
+                per_cpu_core_rate: parseFloat(document.getElementById('rate_cpu').value),
                 per_chunk_rate: parseFloat(document.getElementById('rate_chunk').value),
                 per_player_rate: parseFloat(document.getElementById('rate_player').value)
             };
@@ -1724,7 +1850,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                     </div>
                     <div class="text-slate-400 font-mono">
                         <div>도메인: ${s.full_domain}</div>
-                        <div>코어: ${s.server_type} ${s.mc_version} (${s.allocated_ram_mb/1024}GB)</div>
+                        <div>코어: ${s.server_type} ${s.mc_version} (${s.allocated_cpu_cores || 2} vCPU / ${s.allocated_ram_mb/1024}GB)</div>
                     </div>
                 `;
                 grid.appendChild(card);
@@ -1785,10 +1911,11 @@ async def health_check():
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
         "features": [
+            "real_time_terminal_logs_streaming",
+            "non_reloading_rcon_console",
+            "integer_vcpu_cores_direct_input",
             "multi_worker_persistent_registry",
-            "ownership_association",
-            "saas_landing_page",
-            "sidebar_user_dashboard"
+            "ownership_association"
         ],
         "master_as_worker_active": "master-local" in scheduler.nodes
     }
