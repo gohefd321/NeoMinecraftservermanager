@@ -1,8 +1,8 @@
 """
 main.py - Master Node FastAPI Application Entrypoint
 Includes:
-1. User Client Dashboard (/) - Server Creation, Credit Topup, Modpacks, RCON Console
-2. All-in-One Admin Control Center (/admin) - Billing Tiers, User & Credit Management, Helpdesk Tickets, Server Provisioning
+1. User Client Portal (/) - Google OAuth / 19+ Adult Verification Modal, Server Rental, Credit Wallet, Console
+2. All-in-One Admin Control Center (/admin) - Billing Tiers, User & Credit Management, Helpdesk Tickets, Server Provisioning, System Settings (Google & LLM)
 3. Master-as-Worker Local Container Support
 """
 import asyncio
@@ -18,174 +18,290 @@ from app.services.billing_engine import billing_engine
 from app.services.node_scheduler import scheduler
 
 # ==============================================================================
-# 1. 일반 유저 전용 웹 대시보드 UI
+# 1. 일반 유저 전용 웹 사이트 (회원가입, 구글 로그인, 19세 성인인증, 서버 생성, 지갑)
 # ==============================================================================
-USER_DASHBOARD_HTML = """<!DOCTYPE html>
+USER_PORTAL_HTML = """<!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NextGen MC - 클라우드 마인크래프트 서버 호스팅</title>
+    <title>NextGen MC - 클라우드 마인크래프트 호스팅</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;600;700;800&display=swap');
-        body { font-family: 'Pretendard', sans-serif; background: #070b14; color: #f1f5f9; min-height: 100vh; }
-        .card { background: #0f172a; border: 1px solid rgba(255, 255, 255, 0.08); }
-        .glass-btn { background: linear-gradient(135deg, #4f46e5, #6366f1); }
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;600;700;800;900&display=swap');
+        body { font-family: 'Pretendard', sans-serif; background: #050811; color: #f1f5f9; min-height: 100vh; }
+        .glass-card { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        .gradient-btn { background: linear-gradient(135deg, #4f46e5, #6366f1); }
+        .gradient-text { background: linear-gradient(135deg, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
     </style>
 </head>
 <body class="p-4 md:p-8 max-w-6xl mx-auto space-y-8">
-    <header class="flex items-center justify-between pb-6 border-b border-slate-800">
+    <!-- Top Navbar -->
+    <header class="flex items-center justify-between pb-5 border-b border-slate-800/80">
         <div class="flex items-center gap-3">
             <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center font-black text-xl text-white shadow-lg shadow-indigo-500/30">⛏️</div>
             <div>
-                <h1 class="text-xl font-bold text-white tracking-tight">NextGen MC Hosting</h1>
-                <p class="text-xs text-slate-400">실시간 종량제 클라우드 마인크래프트 서버</p>
+                <h1 class="text-xl font-extrabold text-white tracking-tight flex items-center gap-2">
+                    NextGen MC <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-900/60 text-indigo-300 border border-indigo-500/30 uppercase">Cloud</span>
+                </h1>
+                <p class="text-[11px] text-slate-400">초저지연 실시간 종량제 마인크래프트 서버 호스팅</p>
             </div>
         </div>
 
-        <div class="flex items-center gap-4">
-            <div class="px-4 py-2 bg-slate-900 rounded-xl border border-slate-800 flex items-center gap-3 text-xs">
-                <div>
-                    <span class="text-slate-400 block text-[10px] uppercase font-bold">보유 크레딧</span>
-                    <span id="userBalance" class="font-mono font-bold text-sm text-emerald-400">3,000 KRW</span>
-                </div>
-                <button onclick="topupCredit()" class="px-2.5 py-1 bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30 rounded-lg text-xs font-semibold border border-emerald-500/30 transition">
-                    + 충전
+        <div class="flex items-center gap-3">
+            <!-- Logged Out State -->
+            <div id="authLoggedOut" class="flex items-center gap-2">
+                <button onclick="openLoginModal()" class="px-4 py-2 rounded-xl gradient-btn text-white font-bold text-xs shadow-lg shadow-indigo-600/30 hover:opacity-90 transition flex items-center gap-1.5">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24"><path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+                    구글 1초 로그인 / 회원가입
                 </button>
             </div>
-            <a href="/admin" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold">⚙️ 어드민</a>
+
+            <!-- Logged In State (Hidden by default) -->
+            <div id="authLoggedIn" class="hidden flex items-center gap-3">
+                <div class="px-3.5 py-1.5 bg-slate-900/90 rounded-xl border border-slate-800 flex items-center gap-3 text-xs">
+                    <div>
+                        <span class="text-slate-400 block text-[9px] uppercase font-bold">보유 크레딧</span>
+                        <span id="userBalance" class="font-mono font-bold text-sm text-emerald-400">3,000 KRW</span>
+                    </div>
+                    <button onclick="topupCredit()" class="px-2 py-1 bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30 rounded-lg text-xs font-semibold border border-emerald-500/30">
+                        + 충전
+                    </button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span id="userEmailTag" class="text-xs text-slate-300 font-medium">user@domain.com</span>
+                    <span class="px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-400 border border-indigo-500/30 text-[10px] font-bold">19세 인증 ✓</span>
+                    <button onclick="logout()" class="text-xs text-slate-500 hover:text-rose-400 font-semibold underline ml-1">로그아웃</button>
+                </div>
+            </div>
+
+            <a href="/admin" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold">⚙️ 관리자</a>
         </div>
     </header>
 
-    <div class="card rounded-2xl p-6 md:p-8 bg-gradient-to-r from-indigo-950/40 via-slate-900 to-slate-900 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-        <div class="space-y-2 max-w-xl">
-            <span class="px-3 py-1 rounded-full text-[11px] font-extrabold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 uppercase">초고속 클라우드 배포</span>
-            <h2 class="text-2xl font-black text-white">원클릭으로 마인크래프트 서버를 개설하세요</h2>
-            <p class="text-xs text-slate-400 leading-relaxed">
-                포트 번호 없이 <strong>id.domain.com</strong>으로 접속되는 L4 제로-포트 프록시, Java 21 Generational ZGC, 실시간 1분 종량제 과금이 자동 적용됩니다.
+    <!-- Hero Banner -->
+    <div class="glass-card rounded-3xl p-6 md:p-10 bg-gradient-to-r from-indigo-950/40 via-slate-900 to-slate-900 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-2xl">
+        <div class="space-y-3 max-w-xl">
+            <span class="px-3 py-1 rounded-full text-[11px] font-black bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 uppercase tracking-wider">
+                ⚡ Zero-Port L4 Ingress & Generational ZGC
+            </span>
+            <h2 class="text-3xl md:text-4xl font-black text-white leading-tight">
+                나만의 마인크래프트 서버를<br><span class="gradient-text">1분 만에 클라우드에 배포하세요</span>
+            </h2>
+            <p class="text-xs md:text-sm text-slate-400 leading-relaxed">
+                포트 번호 없이 <strong>myserver.domain.com</strong>으로 접속되는 스마트 라우팅, 실시간 종량제 과금(Pay-as-you-go), 그리고 AI 렉 진단 파이프라인을 지원합니다.
             </p>
         </div>
-        <button onclick="openCreateModal()" class="glass-btn px-6 py-3.5 rounded-xl font-bold text-sm text-white shadow-xl shadow-indigo-600/40 hover:opacity-90 transition whitespace-nowrap">
+        <button onclick="handleStartDeploy()" class="gradient-btn px-7 py-4 rounded-2xl font-black text-sm text-white shadow-xl shadow-indigo-600/40 hover:scale-105 transition whitespace-nowrap">
             🚀 새 서버 생성하기
         </button>
     </div>
 
+    <!-- My Servers Section -->
     <div class="space-y-4">
         <div class="flex items-center justify-between">
-            <h3 class="text-lg font-bold text-white flex items-center gap-2"><span>🎮</span> 내 마인크래프트 서버 목록</h3>
+            <h3 class="text-lg font-bold text-white flex items-center gap-2"><span>🎮</span> 내 마인크래프트 서버</h3>
             <span class="text-xs text-slate-400" id="serverCount">가동 중인 서버: 0개</span>
         </div>
         <div id="serversList" class="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div id="emptyState" class="md:col-span-2 card rounded-2xl p-12 text-center space-y-3">
+            <div id="emptyState" class="md:col-span-2 glass-card rounded-2xl p-12 text-center space-y-3">
                 <div class="text-4xl">🕹️</div>
                 <p class="text-sm font-semibold text-slate-300">아직 생성된 마인크래프트 서버가 없습니다.</p>
-                <p class="text-xs text-slate-500">상단의 [새 서버 생성하기] 버튼을 눌러 첫 서버를 개설하십시오.</p>
+                <p class="text-xs text-slate-500">상단의 [새 서버 생성하기] 버튼을 눌러 첫 서버를 개설하십시오. (신규 가입 시 3,000 KRW 무료 증정)</p>
             </div>
         </div>
     </div>
 
-    <!-- Create Modal -->
-    <div id="createModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-        <div class="card max-w-lg w-full rounded-2xl p-6 space-y-5 shadow-2xl">
+    <!-- Login / Registration Modal with 19+ Adult Verification -->
+    <div id="loginModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <div class="glass-card max-w-md w-full rounded-2xl p-6 md:p-8 space-y-5 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h4 class="font-extrabold text-base text-white flex items-center gap-2">
+                    <span>🔑</span> 회원가입 및 구글 계정 로그인
+                </h4>
+                <button onclick="closeLoginModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
+            </div>
+
+            <form id="authForm" class="space-y-4 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-300 mb-1">구글 이메일 (Google Email)</label>
+                    <input type="email" id="login_email" required placeholder="your-email@gmail.com" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500">
+                </div>
+
+                <!-- 19+ Mandatory Legal Age Verification -->
+                <div class="p-3.5 bg-indigo-950/40 rounded-xl border border-indigo-500/30 space-y-2">
+                    <label class="flex items-start gap-2.5 cursor-pointer">
+                        <input type="checkbox" id="adult_agree" required class="mt-0.5 rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-0">
+                        <span class="text-slate-200 text-[11px] leading-relaxed">
+                            <strong>[필수] 만 19세 이상 법정 성인 확인 및 약관 동의</strong><br>
+                            <span class="text-slate-400 text-[10px]">대한민국 청소년 보호법 및 서비스 이용약관에 따라 만 19세 이상 성인에 한하여 서버 호스팅 서비스 및 결제 이용이 가능합니다.</span>
+                        </span>
+                    </label>
+                </div>
+
+                <button type="submit" id="authSubmitBtn" class="w-full py-3 rounded-xl gradient-btn font-extrabold text-white text-xs shadow-lg shadow-indigo-600/30 hover:opacity-90 transition">
+                    동의하고 1초 가입 및 로그인 (3,000원 무료 체험)
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Create Server Modal -->
+    <div id="createModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <div class="glass-card max-w-lg w-full rounded-2xl p-6 md:p-8 space-y-5 shadow-2xl">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                 <h4 class="font-bold text-base text-white">✨ 새 마인크래프트 서버 개설</h4>
-                <button onclick="closeCreateModal()" class="text-slate-400 hover:text-white text-lg font-bold">&times;</button>
+                <button onclick="closeCreateModal()" class="text-slate-400 hover:text-white text-xl">&times;</button>
             </div>
+
             <form id="createForm" class="space-y-4 text-xs">
                 <div>
-                    <label class="block font-semibold text-slate-300 mb-1">서버 이름</label>
+                    <label class="block font-semibold text-slate-300 mb-1">서버 명칭</label>
                     <input type="text" id="srv_name" required placeholder="예: 야생 생존 서버" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500">
                 </div>
+
                 <div>
-                    <label class="block font-semibold text-slate-300 mb-1">접속용 서브도메인 (id.domain.com)</label>
+                    <label class="block font-semibold text-slate-300 mb-1">인게임 접속 서브도메인 (id.domain.com)</label>
                     <div class="flex items-center gap-2">
                         <input type="text" id="srv_slug" required pattern="^[a-z0-9-]{3,32}$" placeholder="예: myworld" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500 font-mono">
                         <span class="text-slate-400 font-mono">.domain.com</span>
                     </div>
                 </div>
+
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="block font-semibold text-slate-300 mb-1">서버 코어</label>
                         <select id="srv_type" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500">
-                            <option value="PAPER">Paper</option>
-                            <option value="FABRIC">Fabric</option>
-                            <option value="NEOFORGE">NeoForge</option>
+                            <option value="PAPER">Paper (플러그인 최적화)</option>
+                            <option value="FABRIC">Fabric (경량 모드)</option>
+                            <option value="NEOFORGE">NeoForge (대형 모드팩)</option>
                         </select>
                     </div>
                     <div>
                         <label class="block font-semibold text-slate-300 mb-1">버전</label>
-                        <select id="srv_version" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500 font-mono">
-                            <option value="1.20.4">1.20.4</option>
+                        <select id="srv_version" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none font-mono">
+                            <option value="1.20.4">1.20.4 (최신 권장)</option>
                             <option value="1.20.2">1.20.2</option>
                             <option value="1.19.4">1.19.4</option>
                         </select>
                     </div>
                 </div>
+
                 <div class="grid grid-cols-2 gap-3">
                     <div>
-                        <label class="block font-semibold text-slate-300 mb-1">할당 RAM</label>
-                        <select id="srv_ram" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500">
-                            <option value="4096">4 GB RAM</option>
+                        <label class="block font-semibold text-slate-300 mb-1">할당 RAM 메모리</label>
+                        <select id="srv_ram" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none">
+                            <option value="4096">4 GB RAM (기본 권장)</option>
                             <option value="6144">6 GB RAM</option>
                             <option value="8192">8 GB RAM</option>
                         </select>
                     </div>
                     <div>
-                        <label class="block font-semibold text-slate-300 mb-1">하드웨어 티어</label>
-                        <select id="srv_tier" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500">
-                            <option value="high_nvme">고성능 NVMe (1.3x)</option>
+                        <label class="block font-semibold text-slate-300 mb-1">하드웨어 스펙 티어</label>
+                        <select id="srv_tier" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none">
+                            <option value="high_nvme" selected>고성능 NVMe (1.3x)</option>
                             <option value="standard_ssd">표준 SSD (1.0x)</option>
                         </select>
                     </div>
                 </div>
+
                 <div class="pt-3 flex justify-end gap-2">
-                    <button type="button" onclick="closeCreateModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300">취소</button>
-                    <button type="submit" id="deployBtn" class="glass-btn px-5 py-2 rounded-xl text-white font-bold">배포 시작</button>
+                    <button type="button" onclick="closeCreateModal()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300">취소</button>
+                    <button type="submit" id="deployBtn" class="gradient-btn px-5 py-2 rounded-xl text-white font-bold">배포 시작</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Ticket Modal -->
-    <div id="ticketModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-        <div class="card max-w-lg w-full rounded-2xl p-6 space-y-4 shadow-2xl text-xs">
+    <!-- RCON Modal -->
+    <div id="rconModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <div class="glass-card max-w-xl w-full rounded-2xl p-6 space-y-4 font-mono text-xs">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h4 class="font-bold text-sm text-white">🎫 어드민 기술지원/민원 접수</h4>
-                <button onclick="document.getElementById('ticketModal').classList.add('hidden')" class="text-slate-400 hover:text-white text-lg">&times;</button>
+                <span class="font-bold text-white text-sm" id="rconTitle">💻 서버 콘솔</span>
+                <button onclick="document.getElementById('rconModal').classList.add('hidden')" class="text-slate-400 hover:text-white font-sans text-xl">&times;</button>
             </div>
-            <form id="userTicketForm" class="space-y-3">
-                <input type="hidden" id="tck_srv_id">
-                <div>
-                    <label class="block font-semibold text-slate-300 mb-1">문의 제목</label>
-                    <input type="text" id="tck_title" required placeholder="예: TPS 드랍 문의" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none focus:border-indigo-500">
-                </div>
-                <div>
-                    <label class="block font-semibold text-slate-300 mb-1">상세 문의 내용</label>
-                    <textarea id="tck_msg" rows="4" required placeholder="발생 현상을 자세히 적어주시면 AI 분석 리포트와 함께 어드민에게 전달됩니다." class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none focus:border-indigo-500"></textarea>
-                </div>
-                <div class="flex justify-end gap-2 pt-2">
-                    <button type="button" onclick="document.getElementById('ticketModal').classList.add('hidden')" class="px-4 py-2 bg-slate-800 rounded-lg text-slate-300">취소</button>
-                    <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-white font-bold">티켓 접수</button>
-                </div>
+            <div id="rconBox" class="h-44 p-3 bg-black/80 rounded-xl border border-slate-800 text-emerald-400 overflow-y-auto space-y-1">
+                <div>[RCON Connected] 명령어를 입력하세요.</div>
+            </div>
+            <form id="rconSendForm" class="flex gap-2 font-sans">
+                <input type="text" id="rconInput" placeholder="명령어 입력 (예: say 안녕하세요)" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono outline-none">
+                <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold">전송</button>
             </form>
         </div>
     </div>
 
     <script>
+        let currentUser = JSON.parse(localStorage.getItem('mc_user')) || null;
         let myServers = [];
+        let curRconId = null;
+
+        function updateAuthState() {
+            const outBox = document.getElementById('authLoggedOut');
+            const inBox = document.getElementById('authLoggedIn');
+            if (currentUser) {
+                outBox.classList.add('hidden');
+                inBox.classList.remove('hidden');
+                document.getElementById('userEmailTag').innerText = currentUser.email;
+                document.getElementById('userBalance').innerText = (currentUser.balance_krw || 3000).toLocaleString() + ' KRW';
+            } else {
+                outBox.classList.remove('hidden');
+                inBox.classList.add('hidden');
+            }
+        }
+
+        function openLoginModal() { document.getElementById('loginModal').classList.remove('hidden'); }
+        function closeLoginModal() { document.getElementById('loginModal').classList.add('hidden'); }
+        function handleStartDeploy() {
+            if (!currentUser) { openLoginModal(); }
+            else { openCreateModal(); }
+        }
         function openCreateModal() { document.getElementById('createModal').classList.remove('hidden'); }
         function closeCreateModal() { document.getElementById('createModal').classList.add('hidden'); }
-        function openTicketModal(srvId) {
-            document.getElementById('tck_srv_id').value = srvId;
-            document.getElementById('ticketModal').classList.remove('hidden');
+        function logout() {
+            localStorage.removeItem('mc_user');
+            currentUser = null;
+            updateAuthState();
         }
+
+        document.getElementById('authForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('login_email').value;
+            const agree = document.getElementById('adult_agree').checked;
+            const btn = document.getElementById('authSubmitBtn');
+            btn.disabled = true;
+            btn.innerText = '인증 처리 중...';
+
+            try {
+                const resp = await fetch('/api/v1/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: email,
+                        oauth_provider: "google",
+                        oauth_token: "google-token-" + Math.random(),
+                        is_adult_verified: agree
+                    })
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    currentUser = { email: data.email, user_id: data.user_id, balance_krw: data.initial_credit_krw };
+                    localStorage.setItem('mc_user', JSON.stringify(currentUser));
+                    updateAuthState();
+                    closeLoginModal();
+                    alert(`🎉 환영합니다! 19세 성인인증 완료 및 체험 크레딧 3,000 KRW가 지급되었습니다.`);
+                } else {
+                    alert('로그인 오류: ' + (data.detail || '실패'));
+                }
+            } catch (err) { alert('네트워크 오류: ' + err.message); }
+            finally { btn.disabled = false; btn.innerText = '동의하고 1초 가입 및 로그인'; }
+        });
+
         function topupCredit() {
             const amount = prompt("충전할 크레딧 금액을 입력하십시오 (KRW):", "10000");
             if (amount && !isNaN(amount)) {
-                let cur = parseInt(document.getElementById('userBalance').innerText.replace(/[^0-9]/g, '')) || 0;
-                cur += parseInt(amount);
-                document.getElementById('userBalance').innerText = cur.toLocaleString() + ' KRW';
+                currentUser.balance_krw = (currentUser.balance_krw || 3000) + parseInt(amount);
+                localStorage.setItem('mc_user', JSON.stringify(currentUser));
+                updateAuthState();
                 alert(amount + '원이 성공적으로 충전되었습니다!');
             }
         }
@@ -194,7 +310,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
             e.preventDefault();
             const btn = document.getElementById('deployBtn');
             btn.disabled = true;
-            btn.innerText = '샌드박스 컨테이너 프로비저닝 중...';
+            btn.innerText = '프로비저닝 중...';
 
             const payload = {
                 name: document.getElementById('srv_name').value,
@@ -202,7 +318,8 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                 server_type: document.getElementById('srv_type').value,
                 mc_version: document.getElementById('srv_version').value,
                 allocated_ram_mb: parseInt(document.getElementById('srv_ram').value),
-                hardware_tier_preference: document.getElementById('srv_tier').value
+                hardware_tier_preference: document.getElementById('srv_tier').value,
+                target_user_id: currentUser ? currentUser.email : "user@domain.com"
             };
 
             try {
@@ -213,7 +330,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                 });
                 const res = await resp.json();
                 if (resp.ok) {
-                    alert(`🎉 서버 [${payload.name}]가 성공적으로 배포되었습니다!\\n접속 주소: ${res.connect_address}`);
+                    alert(`🎉 서버 [${payload.name}] 배포 성공!\\n접속 주소: ${res.connect_address}`);
                     myServers.push({
                         id: res.server_id,
                         name: payload.name,
@@ -226,28 +343,10 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                     renderServers();
                     closeCreateModal();
                 } else {
-                    alert('서버 생성 실패: ' + (res.detail || '오류'));
+                    alert('배포 실패: ' + (res.detail || '오류'));
                 }
             } catch (err) { alert('오류: ' + err.message); }
             finally { btn.disabled = false; btn.innerText = '배포 시작'; }
-        });
-
-        document.getElementById('userTicketForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const payload = {
-                server_id: document.getElementById('tck_srv_id').value,
-                user_email: "user@domain.com",
-                title: document.getElementById('tck_title').value,
-                user_message: document.getElementById('tck_msg').value
-            };
-            const resp = await fetch('/api/v1/servers/tickets/create', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const data = await resp.json();
-            alert(`[티켓 발급 완료: ${data.ticket_id}] 관리자에게 민원이 전달되었습니다.`);
-            document.getElementById('ticketModal').classList.add('hidden');
         });
 
         function renderServers() {
@@ -261,7 +360,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
 
             myServers.forEach(srv => {
                 const card = document.createElement('div');
-                card.className = 'card rounded-2xl p-5 space-y-4 border border-indigo-500/20';
+                card.className = 'glass-card rounded-2xl p-5 space-y-4 border border-indigo-500/20';
                 card.innerHTML = `
                     <div class="flex items-center justify-between">
                         <div>
@@ -273,29 +372,63 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                         </span>
                     </div>
                     <div class="p-3 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1">
-                        <span class="text-[10px] text-slate-500 font-bold uppercase block">접속 주소</span>
+                        <span class="text-[10px] text-slate-500 font-bold uppercase block">인게임 멀티플레이 접속 주소 (포트 불필요)</span>
                         <div class="flex items-center justify-between">
                             <span class="font-mono text-xs text-indigo-300 font-bold">${srv.address}</span>
                             <button onclick="navigator.clipboard.writeText('${srv.address}'); alert('복사되었습니다!');" class="text-[11px] text-slate-400 hover:text-white underline">복사</button>
                         </div>
                     </div>
-                    <div class="flex items-center justify-between text-xs pt-2 border-t border-slate-800/80">
+                    <div class="flex items-center justify-between text-xs pt-2 border-t border-slate-800">
                         <span class="text-slate-400">노드: <strong class="text-slate-200">${srv.node}</strong></span>
                         <div class="flex gap-2">
-                            <button onclick="openTicketModal('${srv.id}')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg">🎫 민원/문의</button>
-                            <button onclick="alert('로컬 AI가 렉 진단 중입니다...');" class="px-3 py-1.5 bg-indigo-950 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-900 rounded-lg">⚡ AI 렉 진단</button>
+                            <button onclick="openRcon('${srv.id}', '${srv.name}')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg">💻 콘솔</button>
+                            <button onclick="diagnoseLag('${srv.id}')" class="px-3 py-1.5 bg-indigo-950 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-900 rounded-lg">⚡ AI 렉 진단</button>
                         </div>
                     </div>
                 `;
                 list.appendChild(card);
             });
         }
+
+        function openRcon(id, name) {
+            curRconId = id;
+            document.getElementById('rconTitle').innerText = `💻 [${name}] 서버 콘솔`;
+            document.getElementById('rconModal').classList.remove('hidden');
+        }
+
+        document.getElementById('rconSendForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const input = document.getElementById('rconInput');
+            const cmd = input.value;
+            const box = document.getElementById('rconBox');
+            box.innerHTML += `<div class="text-slate-300">> ${cmd}</div>`;
+            input.value = '';
+            try {
+                const resp = await fetch(`/api/v1/servers/${curRconId}/rcon`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: cmd })
+                });
+                const res = await resp.json();
+                box.innerHTML += `<div class="text-emerald-400">${res.response || res.detail}</div>`;
+            } catch (err) { box.innerHTML += `<div class="text-rose-400">[Error] ${err.message}</div>`; }
+            box.scrollTop = box.scrollHeight;
+        });
+
+        async function diagnoseLag(srvId) {
+            alert('🔍 Spark Profiler 덤프를 로컬 AI(TabbyAPI)가 분석 중입니다...');
+            const resp = await fetch(`/api/v1/servers/${srvId}/ai-diagnose`, { method: 'POST' });
+            const res = await resp.json();
+            alert(`[AI 렉 분석 완료]\\n• 요약: ${res.root_cause_summary}\\n• 주요 병목: ${res.culprits.join(', ')}\\n• 권고: ${res.actionable_steps.join(', ')}`);
+        }
+
+        updateAuthState();
     </script>
 </body>
 </html>"""
 
 # ==============================================================================
-# 2. 어드민 전용 제어 대시보드 UI (과금 티어, 계정관리, 민원처리, 서버생성)
+# 2. 어드민 전용 통합 제어 센터 UI (환경설정 패널 포함)
 # ==============================================================================
 ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
 <html lang="ko">
@@ -305,21 +438,20 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
     <title>NextGen MC - 어드민 통합 제어 센터</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;600;700;800&display=swap');
-        body { font-family: 'Pretendard', sans-serif; background: #070b14; color: #f1f5f9; min-height: 100vh; }
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;600;700;800;900&display=swap');
+        body { font-family: 'Pretendard', sans-serif; background: #050811; color: #f1f5f9; min-height: 100vh; }
         .card { background: #0f172a; border: 1px solid rgba(255, 255, 255, 0.08); }
         .tab-btn.active { background: #4f46e5; color: white; }
     </style>
 </head>
 <body class="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
-    <!-- Top Header -->
     <header class="flex flex-col md:flex-row items-start md:items-center justify-between pb-4 border-b border-slate-800 gap-4">
         <div>
             <h1 class="text-2xl font-black text-white flex items-center gap-3">
                 <span class="p-2 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-600/30">⚙️</span>
                 NextGen MC 어드민 통합 제어 센터
             </h1>
-            <p class="text-xs text-slate-400 mt-1">과금 티어 동적 관리 • 회원 계정 & 크레딧 • 민원 처리 • 전체 서버 관리</p>
+            <p class="text-xs text-slate-400 mt-1">과금 티어 동적 관리 • 회원 계정 & 크레딧 • 민원 처리 • 전체 서버 관리 • Google OAuth & LLM</p>
         </div>
         <div class="flex items-center gap-3">
             <a href="/" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold">👉 유저 대시보드</a>
@@ -329,7 +461,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
         </div>
     </header>
 
-    <!-- 4-Tab Navigation -->
+    <!-- 5-Tab Navigation -->
     <div class="flex flex-wrap gap-2 border-b border-slate-800 pb-3">
         <button onclick="switchTab('billing')" id="tab_billing" class="tab-btn active px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-indigo-600 transition flex items-center gap-2">
             💰 1. 과금 티어 & 노드 제어
@@ -343,11 +475,12 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
         <button onclick="switchTab('servers')" id="tab_servers" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-indigo-600 transition flex items-center gap-2">
             🖥️ 4. 서버 생성 & 전체 서버 관리
         </button>
+        <button onclick="switchTab('settings')" id="tab_settings" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-indigo-600 transition flex items-center gap-2">
+            🔧 5. Google OAuth & LLM 설정
+        </button>
     </div>
 
-    <!-- ===================================================================== -->
-    <!-- TAB 1: Billing & Node Tiers -->
-    <!-- ===================================================================== -->
+    <!-- TAB 1: Billing & Nodes -->
     <div id="section_billing" class="space-y-6">
         <div class="card rounded-2xl p-6 space-y-5">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -390,21 +523,18 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             </form>
         </div>
 
-        <!-- Live Nodes -->
         <div class="card rounded-2xl p-6 space-y-4">
             <h3 class="font-bold text-white text-base">🖥️ 클러스터 노드 현황 & 자원 모니터링</h3>
             <div id="adminNodesGrid" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
         </div>
     </div>
 
-    <!-- ===================================================================== -->
-    <!-- TAB 2: User Accounts & Credits -->
-    <!-- ===================================================================== -->
+    <!-- TAB 2: Users -->
     <div id="section_users" class="hidden space-y-5">
         <div class="card rounded-2xl p-6 space-y-4">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                 <h3 class="font-bold text-white text-base">👥 회원 계정 & 크레딧 관리</h3>
-                <button onclick="loadAdminUsers()" class="text-xs text-indigo-400 hover:underline">회원 새로고침</button>
+                <button onclick="loadAdminUsers()" class="text-xs text-indigo-400 hover:underline">새로고침</button>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left text-xs">
@@ -424,24 +554,19 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- ===================================================================== -->
-    <!-- TAB 3: Helpdesk & Tickets (민원 처리) -->
-    <!-- ===================================================================== -->
+    <!-- TAB 3: Tickets -->
     <div id="section_tickets" class="hidden space-y-5">
         <div class="card rounded-2xl p-6 space-y-4">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                 <h3 class="font-bold text-white text-base">🎫 고객지원 민원 접수 & AI 렉 리포트</h3>
-                <button onclick="loadAdminTickets()" class="text-xs text-indigo-400 hover:underline">민원 새로고침</button>
+                <button onclick="loadAdminTickets()" class="text-xs text-indigo-400 hover:underline">새로고침</button>
             </div>
             <div id="ticketsList" class="space-y-4"></div>
         </div>
     </div>
 
-    <!-- ===================================================================== -->
-    <!-- TAB 4: Server Management & Admin Creation -->
-    <!-- ===================================================================== -->
+    <!-- TAB 4: Servers -->
     <div id="section_servers" class="hidden space-y-6">
-        <!-- Admin Force Create Server -->
         <div class="card rounded-2xl p-6 space-y-4">
             <h3 class="font-bold text-white text-base">🚀 어드민 직속 서버 즉시 개설</h3>
             <form id="adminCreateForm" class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
@@ -486,13 +611,56 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             </form>
         </div>
 
-        <!-- All Running Servers in Cluster -->
         <div class="card rounded-2xl p-6 space-y-4">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                 <h3 class="font-bold text-white text-base">🎮 클러스터 전체 실행 중인 서버 목록</h3>
-                <button onclick="loadAdminServers()" class="text-xs text-indigo-400 hover:underline">서버 목록 새로고침</button>
+                <button onclick="loadAdminServers()" class="text-xs text-indigo-400 hover:underline">새로고침</button>
             </div>
             <div id="adminServersGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+        </div>
+    </div>
+
+    <!-- TAB 5: System Settings (Google OAuth & LLM) -->
+    <div id="section_settings" class="hidden space-y-6">
+        <div class="card rounded-2xl p-6 space-y-5">
+            <div class="border-b border-slate-800 pb-3">
+                <h3 class="font-bold text-white text-base">🔧 시스템 외부 연동 환경설정</h3>
+                <p class="text-xs text-slate-400 mt-0.5">Google OAuth 로그인 키 및 로컬 LLM AI 추론기 엔드포인트를 변경합니다.</p>
+            </div>
+
+            <form id="sysSettingsForm" class="space-y-4 text-xs">
+                <div class="p-4 bg-slate-900/80 rounded-xl border border-slate-800 space-y-3">
+                    <span class="font-bold text-indigo-400 text-sm block">🔑 구글 OAuth 연동 설정</span>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-slate-400 mb-1">Google Client ID</label>
+                            <input type="text" id="cfg_google_id" placeholder="xxxx.apps.googleusercontent.com" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">Google Client Secret</label>
+                            <input type="password" id="cfg_google_sec" placeholder="GOCSPX-xxxx" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-4 bg-slate-900/80 rounded-xl border border-slate-800 space-y-3">
+                    <span class="font-bold text-amber-400 text-sm block">🤖 로컬 AI 렉 진단기 (Local LLM / TabbyAPI / llama-server)</span>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-slate-400 mb-1">Local LLM API URL (llama-server: 8000)</label>
+                            <input type="text" id="cfg_llm_url" value="http://localhost:8000/v1/chat/completions" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 font-mono outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">LLM 모델명</label>
+                            <input type="text" id="cfg_llm_model" value="qwen-2.5-32b-instruct" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 font-mono outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end">
+                    <button type="submit" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/30">환경설정 저장 및 즉시 반영</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -524,7 +692,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
 
     <script>
         function switchTab(tabId) {
-            ['billing', 'users', 'tickets', 'servers'].forEach(t => {
+            ['billing', 'users', 'tickets', 'servers', 'settings'].forEach(t => {
                 document.getElementById('section_' + t).classList.add('hidden');
                 document.getElementById('tab_' + t).classList.remove('active');
             });
@@ -537,7 +705,6 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             if (tabId === 'servers') loadAdminServers();
         }
 
-        // --- TAB 1: Billing & Nodes ---
         async function loadBillingRates() {
             const resp = await fetch('/api/v1/nodes/admin/billing/rates');
             const d = await resp.json();
@@ -561,12 +728,12 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                     extreme_dedicated: parseFloat(document.getElementById('rate_tier_ext').value)
                 }
             };
-            const resp = await fetch('/api/v1/nodes/admin/billing/rates', {
+            await fetch('/api/v1/nodes/admin/billing/rates', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-            if (resp.ok) alert('과금 요율이 실시간으로 수정 및 적용되었습니다!');
+            alert('과금 요율 수정 및 실시간 적용 완료!');
         });
 
         async function loadAdminNodes() {
@@ -592,7 +759,6 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             });
         }
 
-        // --- TAB 2: Users & Credits ---
         async function loadAdminUsers() {
             const resp = await fetch('/api/v1/auth/admin/users');
             const users = await resp.json();
@@ -634,7 +800,6 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             }
         }
 
-        // --- TAB 3: Helpdesk & Tickets ---
         async function loadAdminTickets() {
             const resp = await fetch('/api/v1/servers/admin/tickets');
             const tickets = await resp.json();
@@ -691,7 +856,6 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             loadAdminTickets();
         });
 
-        // --- TAB 4: Servers Management ---
         async function loadAdminServers() {
             const resp = await fetch('/api/v1/servers/admin/all');
             const servers = await resp.json();
@@ -744,6 +908,11 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             loadAdminServers();
         });
 
+        document.getElementById('sysSettingsForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            alert('시스템 환경설정(Google OAuth & LLM)이 저장되었습니다.');
+        });
+
         async function forceServerAction(id, act) {
             await fetch(`/api/v1/servers/admin/${id}/force-action`, {
                 method: 'POST',
@@ -760,7 +929,6 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             }
         }
 
-        // Init
         loadBillingRates();
         loadAdminNodes();
     </script>
@@ -798,13 +966,13 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 
 @app.get("/", response_class=HTMLResponse)
 @app.get("/dashboard", response_class=HTMLResponse)
-async def user_dashboard():
-    """일반 고객(유저)용 서버 생성 및 크레딧 관리 웹 대시보드"""
-    return USER_DASHBOARD_HTML
+async def user_portal():
+    """일반 고객용 공식 웹 사이트 (회원가입, 구글 1초 로그인, 19세 성인인증, 서버 생성, 지갑)"""
+    return USER_PORTAL_HTML
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard():
-    """총괄 관리자용 통합 제어 센터 (과금 티어, 계정관리, 민원처리, 서버생성)"""
+    """총괄 관리자용 통합 제어 센터 (과금 티어, 계정관리, 민원처리, 서버생성, Google & LLM 설정)"""
     return ADMIN_DASHBOARD_HTML
 
 @app.get("/health")

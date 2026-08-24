@@ -2,9 +2,9 @@
 """
 server.py - NextGen MC Platform Web Setup Wizard Server
 Features:
+- Includes Google OAuth API Credentials & Local LLM Endpoint Configuration
 - Embedded Responsive HTML (Zero missing static file 404 errors)
 - Automatic Port Conflict Resolution (Auto fallback: 8080 -> 8081 -> 8082...)
-- Single executable Python standard library implementation
 """
 import os
 import sys
@@ -26,11 +26,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;600;700;800&display=swap');
         body { font-family: 'Pretendard', sans-serif; background: radial-gradient(circle at top, #1e1b4b, #0f172a, #020617); min-height: 100vh; }
-        .glass { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.12); }
+        .glass { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.12); }
     </style>
 </head>
-<body class="text-slate-100 flex items-center justify-center p-4">
-    <div class="glass max-w-xl w-full rounded-2xl p-8 shadow-2xl space-y-6">
+<body class="text-slate-100 flex items-center justify-center p-4 py-8">
+    <div class="glass max-w-2xl w-full rounded-2xl p-8 shadow-2xl space-y-6">
         <div class="text-center space-y-2">
             <div class="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-indigo-600/30 border border-indigo-500/30 text-indigo-400 mb-2">
                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -38,7 +38,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </svg>
             </div>
             <h1 class="text-2xl font-bold tracking-tight text-white">NextGen MC Hosting Setup Wizard</h1>
-            <p class="text-xs text-slate-400">클러스터 노드 역할 및 초기 인프라 구성을 완료하십시오.</p>
+            <p class="text-xs text-slate-400">클러스터 노드 역할, Google OAuth 로그인 및 로컬 AI(LLM) 환경을 구성하십시오.</p>
         </div>
 
         <form id="setupForm" class="space-y-5">
@@ -49,7 +49,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     <label class="cursor-pointer border border-indigo-500 bg-indigo-950/40 rounded-xl p-4 flex flex-col items-center justify-center space-y-2 transition-all duration-200" id="masterCard">
                         <input type="radio" name="node_role" value="master" class="hidden" checked onchange="handleRoleChange('master')">
                         <span class="font-bold text-sm text-indigo-300">Master Node (대장)</span>
-                        <span class="text-[11px] text-slate-400 text-center">API 서버(:8005), 과금 엔진, 대시보드, 로컬 컨테이너</span>
+                        <span class="text-[11px] text-slate-400 text-center">API 서버(:8005), 유저/어드민 웹, 과금 엔진, 로컬 컨테이너</span>
                     </label>
                     <label class="cursor-pointer border border-slate-700 bg-slate-800/60 rounded-xl p-4 flex flex-col items-center justify-center space-y-2 transition-all duration-200" id="workerCard">
                         <input type="radio" name="node_role" value="worker" class="hidden" onchange="handleRoleChange('worker')">
@@ -60,14 +60,62 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
 
             <!-- Common Fields -->
-            <div class="space-y-3">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                     <label class="block text-xs font-medium text-slate-300 mb-1">노드 명칭 (Node Name)</label>
-                    <input type="text" id="node_name" name="node_name" required placeholder="예: seoul-master-01" class="w-full px-3.5 py-2.5 rounded-lg bg-slate-900/80 border border-slate-700 text-sm focus:outline-none focus:border-indigo-500">
+                    <input type="text" id="node_name" name="node_name" required placeholder="예: seoul-master-01" class="w-full px-3.5 py-2 rounded-lg bg-slate-900/80 border border-slate-700 text-xs focus:outline-none focus:border-indigo-500">
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-300 mb-1">노드 고유 식별자 (Node UUID)</label>
-                    <input type="text" id="node_id" name="node_id" readonly class="w-full px-3.5 py-2.5 rounded-lg bg-slate-950/80 border border-slate-800 text-xs font-mono text-slate-400 focus:outline-none">
+                    <input type="text" id="node_id" name="node_id" readonly class="w-full px-3.5 py-2 rounded-lg bg-slate-950/80 border border-slate-800 text-xs font-mono text-slate-400 focus:outline-none">
+                </div>
+            </div>
+
+            <!-- Master-Specific Fields -->
+            <div id="masterFields" class="space-y-4 border-t border-slate-800 pt-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">관리자 이메일 (SuperAdmin)</label>
+                        <input type="email" id="admin_email" name="admin_email" required value="admin@domain.com" class="w-full px-3.5 py-2 rounded-lg bg-slate-900/80 border border-slate-700 text-xs focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">클러스터 마스터 시크릿 키</label>
+                        <input type="password" id="master_secret" name="master_secret" required value="cluster-secret-key-12345" class="w-full px-3.5 py-2 rounded-lg bg-slate-900/80 border border-slate-700 text-xs focus:outline-none focus:border-indigo-500">
+                    </div>
+                </div>
+
+                <!-- Google OAuth Configuration -->
+                <div class="p-3.5 bg-slate-900/60 rounded-xl border border-slate-800 space-y-2.5">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold text-indigo-400">🔑 구글 계정 간편 로그인 연동 (Google OAuth API)</span>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-xs">
+                        <div>
+                            <label class="block text-[11px] text-slate-400 mb-1">Google Client ID</label>
+                            <input type="text" id="google_client_id" name="google_client_id" placeholder="xxxx.apps.googleusercontent.com" class="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs outline-none focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] text-slate-400 mb-1">Google Client Secret</label>
+                            <input type="password" id="google_client_secret" name="google_client_secret" placeholder="GOCSPX-xxxx" class="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs outline-none focus:border-indigo-500">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Local LLM AI Profiler Configuration -->
+                <div class="p-3.5 bg-slate-900/60 rounded-xl border border-slate-800 space-y-2.5">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold text-amber-400">🤖 로컬 AI 렉 진단기 연동 (llama.cpp / TabbyAPI)</span>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-xs">
+                        <div>
+                            <label class="block text-[11px] text-slate-400 mb-1">Local LLM API URL</label>
+                            <input type="text" id="local_llm_url" name="local_llm_url" value="http://localhost:8000/v1/chat/completions" class="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs font-mono outline-none focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] text-slate-400 mb-1">LLM 모델명</label>
+                            <input type="text" id="local_llm_model" name="local_llm_model" value="qwen-2.5-32b-instruct" class="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs font-mono outline-none focus:border-indigo-500">
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -75,31 +123,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div id="workerFields" class="space-y-3 hidden border-t border-slate-800 pt-3">
                 <div>
                     <label class="block text-xs font-medium text-slate-300 mb-1">Master 노드 API 주소</label>
-                    <input type="text" id="master_endpoint" name="master_endpoint" placeholder="http://192.168.1.100:8005" class="w-full px-3.5 py-2.5 rounded-lg bg-slate-900/80 border border-slate-700 text-sm focus:outline-none focus:border-indigo-500">
+                    <input type="text" id="master_endpoint" name="master_endpoint" placeholder="http://192.168.1.100:8005" class="w-full px-3.5 py-2 rounded-lg bg-slate-900/80 border border-slate-700 text-xs focus:outline-none focus:border-indigo-500">
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-300 mb-1">클러스터 보안 인증 토큰 (Cluster Secret)</label>
-                    <input type="password" id="cluster_token" name="cluster_token" placeholder="클러스터 공통 시크릿 키 입력" class="w-full px-3.5 py-2.5 rounded-lg bg-slate-900/80 border border-slate-700 text-sm focus:outline-none focus:border-indigo-500">
+                    <input type="password" id="cluster_token" name="cluster_token" placeholder="클러스터 공통 시크릿 키 입력" class="w-full px-3.5 py-2 rounded-lg bg-slate-900/80 border border-slate-700 text-xs focus:outline-none focus:border-indigo-500">
                 </div>
                 <div>
-                    <label class="block text-xs font-medium text-slate-300 mb-1">하드웨어 스펙 티어 (차등 과금 배율)</label>
-                    <select id="hardware_tier" name="hardware_tier" class="w-full px-3.5 py-2.5 rounded-lg bg-slate-900/80 border border-slate-700 text-sm focus:outline-none focus:border-indigo-500">
+                    <label class="block text-xs font-medium text-slate-300 mb-1">하드웨어 스펙 티어</label>
+                    <select id="hardware_tier" name="hardware_tier" class="w-full px-3.5 py-2 rounded-lg bg-slate-900/80 border border-slate-700 text-xs focus:outline-none focus:border-indigo-500">
                         <option value="standard_ssd">표준 SSD 노드 (1.0x 배율)</option>
                         <option value="high_nvme">고성능 Gen4 NVMe 노드 (1.3x 배율)</option>
                         <option value="extreme_dedicated">최고성능 단독 코어 노드 (1.8x 배율)</option>
                     </select>
-                </div>
-            </div>
-
-            <!-- Master-Specific Fields -->
-            <div id="masterFields" class="space-y-3 border-t border-slate-800 pt-3">
-                <div>
-                    <label class="block text-xs font-medium text-slate-300 mb-1">관리자 이메일 (SuperAdmin Email)</label>
-                    <input type="email" id="admin_email" name="admin_email" placeholder="admin@domain.com" class="w-full px-3.5 py-2.5 rounded-lg bg-slate-900/80 border border-slate-700 text-sm focus:outline-none focus:border-indigo-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-300 mb-1">클러스터 마스터 시크릿 키</label>
-                    <input type="password" id="master_secret" name="master_secret" required placeholder="클러스터 암호화 키" class="w-full px-3.5 py-2.5 rounded-lg bg-slate-900/80 border border-slate-700 text-sm focus:outline-none focus:border-indigo-500">
                 </div>
             </div>
 
@@ -240,9 +276,18 @@ class SetupWizardHandler(BaseHTTPRequestHandler):
             else:
                 admin_email = payload.get("admin_email", "admin@domain.com")
                 master_secret = payload.get("master_secret", "master-secret")
+                google_client_id = payload.get("google_client_id", "")
+                google_client_secret = payload.get("google_client_secret", "")
+                local_llm_url = payload.get("local_llm_url", "http://localhost:8000/v1/chat/completions")
+                local_llm_model = payload.get("local_llm_model", "qwen-2.5-32b-instruct")
+
                 env_lines.extend([
                     f"ADMIN_EMAIL={admin_email}",
-                    f"MASTER_SECRET={master_secret}"
+                    f"MASTER_SECRET={master_secret}",
+                    f"GOOGLE_CLIENT_ID={google_client_id}",
+                    f"GOOGLE_CLIENT_SECRET={google_client_secret}",
+                    f"LOCAL_LLM_URL={local_llm_url}",
+                    f"LOCAL_LLM_MODEL={local_llm_model}"
                 ])
 
             env_content = "\n".join(env_lines) + "\n"
