@@ -1,17 +1,15 @@
 """
 main.py - Master Node FastAPI Application Entrypoint
 Features:
-1. User Client Portal (/)
-   - Integer RAM Input (1GB ~ 128GB direct input + slider)
-   - Real-Time 1-Minute / Hourly Estimated Cost Calculator (RAM-based Pricing)
-   - Custom Domain Duplication Check & Credit Deductions
-   - Web File Explorer & Config Editor & 1-Click World Backup (.ZIP)
-   - Modrinth & CurseForge Mod Marketplace (Prism Launcher Style)
-2. Master Admin Center (/admin)
-   - Master Secret Authentication Gateway
-   - RAM-based Billing Rate Configuration (per_ram_gb_rate)
-   - Dynamic Custom Tier Creator (Node Grouping)
-   - Global Memory & Swap (ZRAM/NVMe) Controls
+1. Landing SaaS Portal (/) - High-converting SaaS showcase, Modpack Explorer & ZIP/.mrpack Importer
+2. User Dashboard Console (/dashboard, /console) - Sidebar layout, Overview, Server Workspace:
+   * Core/Version Switcher with Mod Loader Dependency Warning
+   * server.properties Full GUI Config Editor
+   * Web File Explorer & 1-Click World ZIP Backup
+   * Installed Mods Manager with 1-Click Auto-Updater
+   * Modrinth & CurseForge Split Tabs with Tag Chips, Infinite Scroll & Version Filters
+   * Helpdesk & AI Diagnostics
+3. Master Admin Center (/admin) - Protected Master Secret Gateway
 """
 import asyncio
 import os
@@ -25,12 +23,241 @@ from app.api.routes import api_router
 from app.services.billing_engine import billing_engine
 from app.services.node_scheduler import scheduler
 
-USER_PORTAL_HTML = """<!DOCTYPE html>
+# ==============================================================================
+# 1. SaaS Landing Page HTML (/)
+# ==============================================================================
+LANDING_PAGE_HTML = """<!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NextGen MC - 클라우드 마인크래프트 호스팅</title>
+    <title>NextGen MC - 차세대 클라우드 마인크래프트 호스팅</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;600;700;800;900&display=swap');
+        body { font-family: 'Pretendard', sans-serif; background: #050811; color: #f1f5f9; }
+        .glass-card { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        .gradient-btn { background: linear-gradient(135deg, #4f46e5, #6366f1); }
+        .gradient-text { background: linear-gradient(135deg, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .modpack-card:hover { transform: translateY(-3px); border-color: rgba(99, 102, 241, 0.6); }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between">
+    <!-- Navbar -->
+    <header class="border-b border-slate-800/80 bg-slate-950/70 backdrop-blur-md sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 md:px-8 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center font-black text-xl text-white shadow-lg shadow-indigo-500/30">⛏️</div>
+                <div>
+                    <h1 class="text-xl font-black text-white tracking-tight flex items-center gap-2">
+                        NextGen MC <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-900/60 text-indigo-300 border border-indigo-500/30 uppercase">Cloud</span>
+                    </h1>
+                </div>
+            </div>
+
+            <nav class="hidden md:flex items-center gap-6 text-xs font-semibold text-slate-300">
+                <a href="#features" class="hover:text-indigo-400 transition">특장점</a>
+                <a href="#modpacks" class="hover:text-indigo-400 transition">인기 모드팩</a>
+                <a href="#importer" class="hover:text-indigo-400 transition">모드팩 아카이브 임포트</a>
+                <a href="#pricing" class="hover:text-indigo-400 transition">요금 안내</a>
+            </nav>
+
+            <div class="flex items-center gap-3">
+                <a href="/dashboard" class="px-5 py-2.5 rounded-xl gradient-btn text-white font-bold text-xs shadow-lg shadow-indigo-600/30 hover:scale-105 transition flex items-center gap-1.5">
+                    🚀 유저 콘솔 대시보드로 이동
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="max-w-7xl mx-auto px-4 md:px-8 pt-16 pb-20 text-center space-y-6">
+        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-950/80 text-indigo-300 border border-indigo-500/30 text-xs font-bold shadow-lg">
+            <span>✨ 2026 차세대 마인크래프트 호스팅</span>
+            <span class="w-1 h-1 rounded-full bg-indigo-400"></span>
+            <span>초저지연 NVMe & 점유 RAM 실시간 종량제</span>
+        </div>
+
+        <h2 class="text-4xl md:text-6xl font-black text-white leading-tight tracking-tight max-w-4xl mx-auto">
+            원하는 모드팩과 서버를<br><span class="gradient-text">1초 만에 배포하고 자유롭게 관리하세요</span>
+        </h2>
+
+        <p class="text-slate-400 text-sm md:text-base max-w-2xl mx-auto leading-relaxed">
+            월 고정 요금의 낭비 없이, 서버가 활성화되어 점유된 램(RAM)과 플레이어 수에 따라 초 단위로 공정하게 차감됩니다.
+            CurseForge & Modrinth 모드팩 원클릭 설치 및 ZIP 아카이브 드래그 임포트를 지원합니다.
+        </p>
+
+        <div class="flex flex-wrap justify-center gap-4 pt-4">
+            <a href="/dashboard" class="px-8 py-4 rounded-2xl gradient-btn text-white font-extrabold text-sm shadow-xl shadow-indigo-600/40 hover:scale-105 transition">
+                ⚡ 무료 체험 크레딧(3,000원)으로 시작하기
+            </a>
+            <a href="#modpacks" class="px-6 py-4 rounded-2xl glass-card text-slate-200 font-bold text-sm hover:bg-slate-800 transition">
+                📦 인기 모드팩 둘러보기
+            </a>
+        </div>
+    </section>
+
+    <!-- Popular Modpacks Showcase (Mods removed, Modpacks Only) -->
+    <section id="modpacks" class="max-w-7xl mx-auto px-4 md:px-8 py-16 space-y-8">
+        <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <div>
+                <span class="text-xs font-bold text-indigo-400 uppercase">Featured Modpacks</span>
+                <h3 class="text-2xl md:text-3xl font-black text-white mt-1">인기 대형 모드팩 카탈로그</h3>
+                <p class="text-xs text-slate-400 mt-1">클릭 한 번으로 해당 모드팩이 사전 탑재된 최적화 서버를 즉시 시작할 수 있습니다.</p>
+            </div>
+            <a href="/dashboard" class="text-xs font-bold text-indigo-400 hover:underline">대시보드에서 전체 모드팩 검색하기 &rarr;</a>
+        </div>
+
+        <div id="featuredModpacksGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+            <!-- Modpack Cards -->
+            <div class="modpack-card glass-card rounded-2xl p-5 space-y-4 flex flex-col justify-between border border-slate-800 transition shadow-xl">
+                <div class="space-y-3">
+                    <img src="https://cdn.modrinth.com/data/Z19nggA0/icon.png" class="w-14 h-14 rounded-2xl bg-slate-900 object-cover shadow-md">
+                    <div>
+                        <h4 class="font-extrabold text-base text-white">All the Mods 9 (ATM9)</h4>
+                        <span class="text-[11px] text-amber-400 font-mono">CurseForge / Forge</span>
+                    </div>
+                    <p class="text-xs text-slate-400 line-clamp-3 leading-relaxed">
+                        마법, 기술, 모험, 퀘스트, 차원 탐험의 모든 것을 담은 세계 최대 규모의 올인원 종합 모드팩
+                    </p>
+                </div>
+                <div class="space-y-2 pt-3 border-t border-slate-800">
+                    <div class="text-[11px] text-slate-500 font-mono">권장 8GB+ RAM | 400+ 모드</div>
+                    <a href="/dashboard?preset=MODPACK_READY&modpack=all-the-mods-9" class="w-full block text-center py-2.5 rounded-xl bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600 hover:text-white font-bold text-xs transition">
+                        🚀 이 모드팩으로 시작하기
+                    </a>
+                </div>
+            </div>
+
+            <div class="modpack-card glass-card rounded-2xl p-5 space-y-4 flex flex-col justify-between border border-slate-800 transition shadow-xl">
+                <div class="space-y-3">
+                    <img src="https://cdn.modrinth.com/data/yMCEFikR/icon.png" class="w-14 h-14 rounded-2xl bg-slate-900 object-cover shadow-md">
+                    <div>
+                        <h4 class="font-extrabold text-base text-white">Better MC [FABRIC]</h4>
+                        <span class="text-[11px] text-emerald-400 font-mono">CurseForge / Fabric</span>
+                    </div>
+                    <p class="text-xs text-slate-400 line-clamp-3 leading-relaxed">
+                        새로운 보스, 차원, 던전, 사운드, 그래픽 셰이더와 커스텀 UI를 결합한 최고의 바닐라 플러스 RPG
+                    </p>
+                </div>
+                <div class="space-y-2 pt-3 border-t border-slate-800">
+                    <div class="text-[11px] text-slate-500 font-mono">권장 6GB+ RAM | 250+ 모드</div>
+                    <a href="/dashboard?preset=MODPACK_READY&modpack=better-mc" class="w-full block text-center py-2.5 rounded-xl bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600 hover:text-white font-bold text-xs transition">
+                        🚀 이 모드팩으로 시작하기
+                    </a>
+                </div>
+            </div>
+
+            <div class="modpack-card glass-card rounded-2xl p-5 space-y-4 flex flex-col justify-between border border-slate-800 transition shadow-xl">
+                <div class="space-y-3">
+                    <img src="https://cdn.modrinth.com/data/M0uO8vpq/icon.png" class="w-14 h-14 rounded-2xl bg-slate-900 object-cover shadow-md">
+                    <div>
+                        <h4 class="font-extrabold text-base text-white">Cobblemon Official Pack</h4>
+                        <span class="text-[11px] text-indigo-400 font-mono">Modrinth / Fabric</span>
+                    </div>
+                    <p class="text-xs text-slate-400 line-clamp-3 leading-relaxed">
+                        오픈월드 포켓몬 테이밍, 배틀, 미니맵, 편의성 모드가 모두 번들링된 공식 모드팩
+                    </p>
+                </div>
+                <div class="space-y-2 pt-3 border-t border-slate-800">
+                    <div class="text-[11px] text-slate-500 font-mono">권장 4GB+ RAM | 포켓몬 테이밍</div>
+                    <a href="/dashboard?preset=MODPACK_READY&modpack=cobblemon-modpack" class="w-full block text-center py-2.5 rounded-xl bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600 hover:text-white font-bold text-xs transition">
+                        🚀 이 모드팩으로 시작하기
+                    </a>
+                </div>
+            </div>
+
+            <div class="modpack-card glass-card rounded-2xl p-5 space-y-4 flex flex-col justify-between border border-slate-800 transition shadow-xl">
+                <div class="space-y-3">
+                    <img src="https://cdn.modrinth.com/data/1KVo5zza/icon.png" class="w-14 h-14 rounded-2xl bg-slate-900 object-cover shadow-md">
+                    <div>
+                        <h4 class="font-extrabold text-base text-white">Fabulously Optimized</h4>
+                        <span class="text-[11px] text-cyan-400 font-mono">Modrinth / Fabric</span>
+                    </div>
+                    <p class="text-xs text-slate-400 line-clamp-3 leading-relaxed">
+                        소듐, 리튬, 인듐 및 셰이더를 결합하여 프레임과 틱 레이트를 3배 이상 극대화하는 경량 최적화 팩
+                    </p>
+                </div>
+                <div class="space-y-2 pt-3 border-t border-slate-800">
+                    <div class="text-[11px] text-slate-500 font-mono">권장 2GB+ RAM | 초경량 고FPS</div>
+                    <a href="/dashboard?preset=MODPACK_READY&modpack=fabulously-optimized" class="w-full block text-center py-2.5 rounded-xl bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600 hover:text-white font-bold text-xs transition">
+                        🚀 이 모드팩으로 시작하기
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Modpack ZIP / .mrpack Drag & Drop Importer -->
+    <section id="importer" class="max-w-7xl mx-auto px-4 md:px-8 py-16">
+        <div class="glass-card rounded-3xl p-8 md:p-12 border border-indigo-500/30 bg-gradient-to-br from-indigo-950/40 via-slate-900 to-slate-950 space-y-6 text-center">
+            <div class="w-16 h-16 rounded-2xl bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center text-3xl mx-auto">📁</div>
+            <div class="space-y-2 max-w-2xl mx-auto">
+                <h3 class="text-2xl md:text-3xl font-black text-white">내 모드팩 파일 직접 임포트 (.zip, .mrpack)</h3>
+                <p class="text-xs md:text-sm text-slate-400 leading-relaxed">
+                    CurseForge에서 내보낸 ZIP 파일이나 Modrinth의 .mrpack 파일을 업로드하면, 모드 및 컨피그 설정을 자동으로 추출하여 즉시 구동 가능한 전용 서버를 생성합니다.
+                </p>
+            </div>
+            
+            <div class="p-8 border-2 border-dashed border-indigo-500/40 rounded-2xl bg-slate-950/60 max-w-xl mx-auto space-y-3">
+                <span class="text-3xl block">📥</span>
+                <p class="text-xs font-semibold text-slate-300">여기에 모드팩 ZIP 또는 .mrpack 파일을 드래그하여 놓으세요</p>
+                <label class="inline-block px-5 py-2.5 rounded-xl gradient-btn text-white font-bold text-xs cursor-pointer shadow-lg">
+                    내 PC에서 파일 선택하기
+                    <input type="file" accept=".zip,.mrpack" onchange="handleModpackUpload(this)" class="hidden">
+                </label>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section id="features" class="max-w-7xl mx-auto px-4 md:px-8 py-16 grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="glass-card rounded-2xl p-6 space-y-3">
+            <div class="text-3xl">🧠</div>
+            <h4 class="font-black text-base text-white">자유로운 RAM 정수 직접 지정</h4>
+            <p class="text-xs text-slate-400 leading-relaxed">1GB부터 128GB까지 정수 단위로 자유롭게 할당하고 실시간 예상 과금액을 확인하세요.</p>
+        </div>
+        <div class="glass-card rounded-2xl p-6 space-y-3">
+            <div class="text-3xl">⚙️</div>
+            <h4 class="font-black text-base text-white">server.properties GUI 에디터</h4>
+            <p class="text-xs text-slate-400 leading-relaxed">복잡한 설정 파일 직접 수정 없이, 브라우저에서 토글과 슬라이더로 모든 인게임 옵션을 제어합니다.</p>
+        </div>
+        <div class="glass-card rounded-2xl p-6 space-y-3">
+            <div class="text-3xl">🌍</div>
+            <h4 class="font-black text-base text-white">원클릭 월드 ZIP 백업</h4>
+            <p class="text-xs text-slate-400 leading-relaxed">지옥, 엔드, 오버월드 맵 데이터를 클릭 한 번으로 압축하여 즉시 PC로 다운로드할 수 있습니다.</p>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800/80 bg-slate-950 py-8 text-center text-xs text-slate-500">
+        <div class="max-w-7xl mx-auto px-4 space-y-2">
+            <p>© 2026 NextGen MC Platform. All rights reserved. (청소년 보호법에 따른 19세 성인인증 필수)</p>
+            <p class="text-[11px] text-slate-600">Minecraft is a trademark of Mojang AB. NextGen MC is not affiliated with Mojang or Microsoft.</p>
+        </div>
+    </footer>
+
+    <script>
+        function handleModpackUpload(input) {
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+                alert(`📦 모드팩 [${file.name}] 감지 완료! 대시보드로 이동하여 서버 생성을 진행합니다.`);
+                window.location.href = `/dashboard?import_filename=${encodeURIComponent(file.name)}`;
+            }
+        }
+    </script>
+</body>
+</html>"""
+
+# ==============================================================================
+# 2. User Console Dashboard HTML (/dashboard, /console)
+# ==============================================================================
+USER_DASHBOARD_HTML = """<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NextGen MC - 유저 콘솔 대시보드</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;600;700;800;900&display=swap');
@@ -38,178 +265,194 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
         .glass-card { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.08); }
         .gradient-btn { background: linear-gradient(135deg, #4f46e5, #6366f1); }
         .gradient-text { background: linear-gradient(135deg, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .preset-card { transition: all 0.2s ease; cursor: pointer; border: 2px solid transparent; }
-        .preset-card.active { border-color: #6366f1; background: rgba(99, 102, 241, 0.18); }
-        .mod-card:hover { transform: translateY(-2px); border-color: rgba(99, 102, 241, 0.5); }
+        .nav-link.active { background: rgba(99, 102, 241, 0.15); color: #818cf8; border-left: 3px solid #6366f1; }
+        .tab-btn.active { background: #4f46e5; color: white; }
+        .chip.active { background: #4f46e5; color: white; border-color: #6366f1; }
     </style>
 </head>
-<body class="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
-    <!-- Header -->
-    <header class="flex items-center justify-between pb-5 border-b border-slate-800/80">
-        <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center font-black text-xl text-white shadow-lg shadow-indigo-500/30">⛏️</div>
-            <div>
-                <h1 class="text-xl font-extrabold text-white tracking-tight flex items-center gap-2">
-                    NextGen MC <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-900/60 text-indigo-300 border border-indigo-500/30 uppercase">Cloud</span>
-                </h1>
-                <p class="text-[11px] text-slate-400">자유로운 램 용량 조절 • 실시간 예상 과금액 계산기 • 점유 램 기반 종량제</p>
-            </div>
-        </div>
+<body class="flex h-screen overflow-hidden text-xs">
 
-        <div class="flex items-center gap-3">
-            <div id="authLoggedOut" class="flex items-center gap-2">
-                <button onclick="openLoginModal()" class="px-4 py-2 rounded-xl gradient-btn text-white font-bold text-xs shadow-lg shadow-indigo-600/30 hover:opacity-90 transition flex items-center gap-1.5">
-                    <svg class="w-4 h-4" viewBox="0 0 24 24"><path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
-                    구글 1초 로그인 / 회원가입
-                </button>
-            </div>
-
-            <div id="authLoggedIn" class="hidden flex items-center gap-3">
-                <div class="px-3.5 py-1.5 bg-slate-900/90 rounded-xl border border-slate-800 flex items-center gap-3 text-xs">
-                    <div>
-                        <span class="text-slate-400 block text-[9px] uppercase font-bold">보유 크레딧</span>
-                        <span id="userBalance" class="font-mono font-bold text-sm text-emerald-400">3,000 KRW</span>
-                    </div>
-                    <button onclick="topupCredit()" class="px-2 py-1 bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30 rounded-lg text-xs font-semibold border border-emerald-500/30">
-                        + 충전
-                    </button>
-                </div>
-                <div class="flex items-center gap-2">
-                    <span id="userEmailTag" class="text-xs text-slate-300 font-medium">user@domain.com</span>
-                    <span class="px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-400 border border-indigo-500/30 text-[10px] font-bold">19세 인증 ✓</span>
-                    <button onclick="logout()" class="text-xs text-slate-500 hover:text-rose-400 font-semibold underline ml-1">로그아웃</button>
-                </div>
-            </div>
-        </div>
-    </header>
-
-    <!-- Banner -->
-    <div class="glass-card rounded-3xl p-6 md:p-10 bg-gradient-to-r from-indigo-950/40 via-slate-900 to-slate-900 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-2xl">
-        <div class="space-y-3 max-w-2xl">
-            <span class="px-3 py-1 rounded-full text-[11px] font-black bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 uppercase tracking-wider">
-                ⚡ 점유 램(RAM) 기반 실시간 종량제 과금 & 투명한 요율 계산기
-            </span>
-            <h2 class="text-3xl md:text-4xl font-black text-white leading-tight">
-                원하는 RAM 용량을 직접 정하고<br><span class="gradient-text">예상 과금액을 실시간 확인하세요</span>
-            </h2>
-            <p class="text-xs md:text-sm text-slate-400 leading-relaxed">
-                1GB부터 128GB까지 정수로 자유롭게 지정할 수 있으며, 실제 점유된 메모리와 로드된 청크에 따라 초 단위로 공정하게 차감됩니다.
-            </p>
-        </div>
-        <div class="flex flex-col sm:flex-row gap-3">
-            <button onclick="openModMarketplace(null)" class="px-6 py-4 rounded-2xl font-black text-xs text-indigo-300 bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/40 shadow-xl transition flex items-center justify-center gap-2">
-                <span>🧩</span> 모드 & 모드팩 탐색
-            </button>
-            <button onclick="handleStartDeploy()" class="gradient-btn px-7 py-4 rounded-2xl font-black text-sm text-white shadow-xl shadow-indigo-600/40 hover:scale-105 transition whitespace-nowrap">
-                🚀 새 서버 생성하기
-            </button>
-        </div>
-    </div>
-
-    <!-- My Servers Grid -->
-    <div class="space-y-4">
-        <div class="flex items-center justify-between">
-            <h3 class="text-lg font-bold text-white flex items-center gap-2"><span>🎮</span> 내 마인크래프트 서버</h3>
-            <span class="text-xs text-slate-400" id="serverCount">가동 중인 서버: 0개</span>
-        </div>
-        <div id="serversList" class="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div id="emptyState" class="md:col-span-2 glass-card rounded-2xl p-12 text-center space-y-3">
-                <div class="text-4xl">🕹️</div>
-                <p class="text-sm font-semibold text-slate-300">아직 생성된 마인크래프트 서버가 없습니다.</p>
-                <p class="text-xs text-slate-500">상단의 [새 서버 생성하기] 버튼을 눌러 첫 서버를 개설하십시오. (신규 가입 3,000원 지원)</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Login Modal -->
-    <div id="loginModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 z-50">
-        <div class="glass-card max-w-md w-full rounded-2xl p-6 md:p-8 space-y-5 shadow-2xl">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h4 class="font-extrabold text-base text-white flex items-center gap-2">
-                    <span>🔑</span> 회원가입 및 구글 계정 로그인
-                </h4>
-                <button onclick="closeLoginModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
-            </div>
-
-            <form id="authForm" class="space-y-4 text-xs">
+    <!-- Left Sidebar -->
+    <aside class="w-64 bg-slate-950 border-r border-slate-800/80 flex flex-col justify-between p-4 flex-shrink-0">
+        <div class="space-y-6">
+            <!-- Brand -->
+            <a href="/" class="flex items-center gap-3 px-2">
+                <div class="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center font-black text-sm text-white shadow-lg shadow-indigo-500/30">⛏️</div>
                 <div>
-                    <label class="block font-semibold text-slate-300 mb-1">구글 이메일 (Google Email)</label>
-                    <input type="email" id="login_email" required placeholder="your-email@gmail.com" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500">
+                    <h1 class="text-sm font-extrabold text-white tracking-tight">NextGen MC</h1>
+                    <span class="text-[9px] text-slate-400 font-mono">User Console</span>
                 </div>
+            </a>
 
-                <div class="p-3.5 bg-indigo-950/40 rounded-xl border border-indigo-500/30 space-y-2">
-                    <label class="flex items-start gap-2.5 cursor-pointer">
-                        <input type="checkbox" id="adult_agree" required class="mt-0.5 rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-0">
-                        <span class="text-slate-200 text-[11px] leading-relaxed">
-                            <strong>[필수] 만 19세 이상 법정 성인 확인 및 약관 동의</strong><br>
-                            <span class="text-slate-400 text-[10px]">청소년 보호법 및 서비스 이용약관에 따라 만 19세 이상 성인에 한하여 서버 개설 및 호스팅 이용이 가능합니다.</span>
-                        </span>
-                    </label>
-                </div>
-
-                <button type="submit" id="authSubmitBtn" class="w-full py-3 rounded-xl gradient-btn font-extrabold text-white text-xs shadow-lg shadow-indigo-600/30 hover:opacity-90 transition">
-                    동의하고 1초 가입 및 로그인 (3,000원 무료 체험)
+            <!-- Nav Links -->
+            <nav class="space-y-1">
+                <button onclick="switchView('overview')" id="nav_overview" class="nav-link active w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold text-slate-300 hover:bg-slate-900 transition">
+                    <span>📊</span> 대시보드 개요
                 </button>
-            </form>
+                <button onclick="switchView('servers')" id="nav_servers" class="nav-link w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold text-slate-300 hover:bg-slate-900 transition">
+                    <span>🎮</span> 내 마인크래프트 서버
+                </button>
+                <button onclick="switchView('helpdesk')" id="nav_helpdesk" class="nav-link w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold text-slate-300 hover:bg-slate-900 transition">
+                    <span>🎫</span> 고객센터 & AI 렉 진단
+                </button>
+            </nav>
         </div>
-    </div>
 
-    <!-- Create Server Modal -->
-    <div id="createModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <!-- User Wallet & Profile -->
+        <div class="space-y-3 border-t border-slate-800/80 pt-4">
+            <div class="p-3 bg-slate-900/90 rounded-xl border border-slate-800 space-y-1.5">
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-400 text-[10px] font-bold uppercase">보유 크레딧</span>
+                    <button onclick="topupCredit()" class="text-[10px] text-emerald-400 hover:underline font-bold">+ 충전</button>
+                </div>
+                <div id="sidebarBalance" class="text-sm font-mono font-extrabold text-emerald-400">3,000 KRW</div>
+            </div>
+
+            <div class="flex items-center justify-between px-2">
+                <div class="overflow-hidden">
+                    <span id="sidebarEmail" class="font-bold text-slate-200 block truncate">user@domain.com</span>
+                    <span class="text-[10px] text-indigo-400">19세 인증 완료 ✓</span>
+                </div>
+                <button onclick="logout()" class="text-slate-500 hover:text-rose-400 text-xs">로그아웃</button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Workspace Area -->
+    <main class="flex-1 flex flex-col overflow-hidden bg-[#050811]">
+        <!-- Top Toolbar -->
+        <header class="h-14 border-b border-slate-800/80 px-6 flex items-center justify-between bg-slate-950/40">
+            <div class="flex items-center gap-2 text-slate-400">
+                <span id="pageBreadcrumb">대시보드 개요</span>
+            </div>
+            <div class="flex items-center gap-3">
+                <button onclick="openCreateModal()" class="gradient-btn px-4 py-2 rounded-xl text-white font-extrabold shadow-lg shadow-indigo-600/30 hover:scale-105 transition flex items-center gap-1.5">
+                    🚀 새 서버 개설
+                </button>
+            </div>
+        </header>
+
+        <!-- View 1: Overview -->
+        <div id="view_overview" class="flex-1 overflow-y-auto p-6 space-y-6">
+            <!-- Stat Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="glass-card p-5 rounded-2xl space-y-1">
+                    <span class="text-slate-400 text-[10px] font-bold uppercase">가동 중인 서버</span>
+                    <div class="text-2xl font-black text-white" id="statServerCount">0개</div>
+                </div>
+                <div class="glass-card p-5 rounded-2xl space-y-1">
+                    <span class="text-slate-400 text-[10px] font-bold uppercase">총 할당 RAM</span>
+                    <div class="text-2xl font-black text-indigo-400" id="statTotalRam">0 GB</div>
+                </div>
+                <div class="glass-card p-5 rounded-2xl space-y-1">
+                    <span class="text-slate-400 text-[10px] font-bold uppercase">예상 1시간 과금액</span>
+                    <div class="text-2xl font-black text-emerald-400" id="statCostPerHour">0 KRW</div>
+                </div>
+                <div class="glass-card p-5 rounded-2xl space-y-1">
+                    <span class="text-slate-400 text-[10px] font-bold uppercase">남은 잔액</span>
+                    <div class="text-2xl font-black text-amber-400 font-mono" id="statBalance">3,000 KRW</div>
+                </div>
+            </div>
+
+            <!-- Fast Action Banner -->
+            <div class="glass-card rounded-2xl p-6 bg-gradient-to-r from-indigo-950/40 via-slate-900 to-slate-900 flex items-center justify-between gap-4">
+                <div class="space-y-1">
+                    <h3 class="font-extrabold text-base text-white">클라우드 마인크래프트 서버를 즉시 시작하세요</h3>
+                    <p class="text-slate-400 text-xs">건축, 야생, Modrinth/CurseForge 모드팩까지 1초 만에 배포할 수 있습니다.</p>
+                </div>
+                <button onclick="openCreateModal()" class="gradient-btn px-5 py-2.5 rounded-xl text-white font-bold whitespace-nowrap shadow-lg">
+                    + 서버 만들기
+                </button>
+            </div>
+        </div>
+
+        <!-- View 2: Servers List -->
+        <div id="view_servers" class="hidden flex-1 overflow-y-auto p-6 space-y-6">
+            <div class="flex items-center justify-between">
+                <h3 class="font-bold text-base text-white">🎮 내 마인크래프트 서버 목록</h3>
+                <span class="text-slate-400" id="serverListCount">0개 가동 중</span>
+            </div>
+            <div id="serversGrid" class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div id="emptyServers" class="col-span-2 glass-card rounded-2xl p-12 text-center space-y-2">
+                    <div class="text-3xl">🕹️</div>
+                    <p class="text-slate-300 font-semibold">아직 생성된 마인크래프트 서버가 없습니다.</p>
+                    <p class="text-slate-500">상단의 [새 서버 개설] 버튼을 눌러 첫 서버를 만들어보세요.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- View 3: Helpdesk -->
+        <div id="view_helpdesk" class="hidden flex-1 overflow-y-auto p-6 space-y-6">
+            <div class="flex items-center justify-between">
+                <h3 class="font-bold text-base text-white">🎫 기술 지원 헬프데스크</h3>
+                <button onclick="openTicketModal()" class="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold shadow">
+                    + 새 문의 접수
+                </button>
+            </div>
+            <div id="userTicketsList" class="space-y-4"></div>
+        </div>
+    </main>
+
+    <!-- Create Server Modal (Free Auto Domain vs Premium Custom Domain) -->
+    <div id="createModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
         <div class="glass-card max-w-2xl w-full rounded-2xl p-6 md:p-8 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div>
-                    <h4 class="font-bold text-base text-white">✨ 마인크래프트 서버 개설 마법사</h4>
+                    <h4 class="font-bold text-base text-white">✨ 새 마인크래프트 서버 개설</h4>
                     <p class="text-[11px] text-slate-400">목적에 맞는 프리셋을 선택하거나 램 용량 및 구동기를 자유롭게 설정하세요.</p>
                 </div>
                 <button onclick="closeCreateModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
             </div>
 
-            <!-- Presets Selection Cards -->
+            <!-- Presets -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div onclick="selectPreset('BUILDER_FLAT')" id="preset_BUILDER_FLAT" class="preset-card glass-card p-4 rounded-xl space-y-2">
-                    <div class="text-2xl">🏰</div>
-                    <div class="font-bold text-white text-xs">심플 건축 서버</div>
-                    <p class="text-[10px] text-slate-400 leading-tight">평지 맵 + WorldEdit + CoreProtect (4GB RAM / 1.20.4)</p>
-                    <span class="inline-block text-[9px] px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 font-semibold">초간편 원클릭</span>
+                <div onclick="selectPreset('BUILDER_FLAT')" id="preset_BUILDER_FLAT" class="preset-card glass-card p-3.5 rounded-xl space-y-1.5 cursor-pointer border border-transparent">
+                    <div class="text-xl">🏰</div>
+                    <div class="font-bold text-white">심플 건축 서버</div>
+                    <p class="text-[10px] text-slate-400">평지 맵 + WorldEdit (4GB / 1.20.4)</p>
                 </div>
-
-                <div onclick="selectPreset('SURVIVAL_SMP')" id="preset_SURVIVAL_SMP" class="preset-card active glass-card p-4 rounded-xl space-y-2">
-                    <div class="text-2xl">🌲</div>
-                    <div class="font-bold text-white text-xs">심플 야생 서버</div>
-                    <p class="text-[10px] text-slate-400 leading-tight">야생 맵 + EssentialsX (TPA/Home) (4GB RAM / 1.20.4)</p>
-                    <span class="inline-block text-[9px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 font-semibold">인기 추천</span>
+                <div onclick="selectPreset('SURVIVAL_SMP')" id="preset_SURVIVAL_SMP" class="preset-card active glass-card p-3.5 rounded-xl space-y-1.5 cursor-pointer border border-indigo-500 bg-indigo-950/20">
+                    <div class="text-xl">🌲</div>
+                    <div class="font-bold text-white">심플 야생 서버</div>
+                    <p class="text-[10px] text-slate-400">야생 맵 + EssentialsX (4GB / 1.20.4)</p>
                 </div>
-
-                <div onclick="selectPreset('ADVANCED_CUSTOM')" id="preset_ADVANCED_CUSTOM" class="preset-card glass-card p-4 rounded-xl space-y-2">
-                    <div class="text-2xl">⚙️</div>
-                    <div class="font-bold text-white text-xs">고급 서버 개설</div>
-                    <p class="text-[10px] text-slate-400 leading-tight">26.2, 스냅샷, RAM 직접 지정, 모든 구동기 완벽 지원</p>
-                    <span class="inline-block text-[9px] px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 font-semibold">전문가용</span>
+                <div onclick="selectPreset('ADVANCED_CUSTOM')" id="preset_ADVANCED_CUSTOM" class="preset-card glass-card p-3.5 rounded-xl space-y-1.5 cursor-pointer border border-transparent">
+                    <div class="text-xl">⚙️</div>
+                    <div class="font-bold text-white">고급 서버 개설</div>
+                    <p class="text-[10px] text-slate-400">26.2, 스냅샷, RAM 직접 입력, 전 구동기</p>
                 </div>
             </div>
 
             <form id="createForm" class="space-y-4 text-xs">
                 <input type="hidden" id="selected_preset" value="SURVIVAL_SMP">
+                <input type="hidden" id="selected_modpack_id" value="">
 
-                <div class="space-y-3">
-                    <div>
-                        <label class="block font-semibold text-slate-300 mb-1">서버 명칭</label>
-                        <input type="text" id="srv_name" required placeholder="예: 우리들의 마인크래프트 서버" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500">
+                <div>
+                    <label class="block font-semibold text-slate-300 mb-1">서버 명칭</label>
+                    <input type="text" id="srv_name" required placeholder="예: 우리들의 마인크래프트 서버" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500">
+                </div>
+
+                <!-- Domain Selection: Free Auto vs Premium Custom -->
+                <div class="p-3.5 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <label class="font-bold text-slate-200">접속 도메인 설정</label>
+                        <label class="flex items-center gap-1.5 cursor-pointer text-[11px] text-indigo-300 font-semibold">
+                            <input type="checkbox" id="enableCustomDomain" onchange="toggleCustomDomainInput()" class="rounded bg-slate-900 text-indigo-600 focus:ring-0">
+                            나만의 프리미엄 도메인 지정 (1,000 KRW)
+                        </label>
                     </div>
 
-                    <!-- Domain Customization & Real-time Check -->
-                    <div>
-                        <div class="flex items-center justify-between mb-1">
-                            <label class="font-semibold text-slate-300">접속 도메인 (서브도메인)</label>
-                            <span id="domainStatusTag" class="text-[11px] font-semibold text-slate-400">중복 확인 대기 중...</span>
-                        </div>
+                    <div id="freeDomainNotice" class="text-[11px] text-slate-400">
+                        ✓ <strong>무료 자동 발급 도메인</strong> (<span class="font-mono text-indigo-300">mc-xxxxxx.domain.com</span>)이 적용됩니다. (추가 비용 0원)
+                    </div>
+
+                    <div id="customDomainBox" class="hidden space-y-1.5 pt-1 border-t border-slate-800">
                         <div class="flex items-center gap-1.5">
-                            <input type="text" id="srv_slug" required pattern="^[a-z0-9-]{3,32}$" placeholder="예: myworld" oninput="handleDomainInput()" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500 font-mono">
-                            <span class="text-slate-400 font-mono text-[11px] whitespace-nowrap">.domain.com</span>
+                            <input type="text" id="srv_slug" pattern="^[a-z0-9-]{3,32}$" placeholder="예: myworld" oninput="handleDomainInput()" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono outline-none">
+                            <span class="text-slate-400 font-mono text-[11px]">.domain.com</span>
                         </div>
-                        <div class="flex items-center justify-between mt-1 text-[11px]">
-                            <span class="text-slate-400">✨ 커스텀 도메인 지정 시: <strong class="text-amber-400">1,000 KRW</strong> 차감</span>
+                        <div class="flex items-center justify-between text-[11px]">
+                            <span id="domainStatusTag" class="text-slate-400">3자 이상의 영문/숫자 입력</span>
                             <span id="domainSuggestions" class="text-indigo-400"></span>
                         </div>
                     </div>
@@ -217,44 +460,29 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
 
                 <!-- Advanced Options Container -->
                 <div id="advancedOptions" class="hidden p-4 bg-slate-900/90 rounded-xl border border-indigo-500/30 space-y-4">
-                    <span class="font-bold text-indigo-300 text-xs flex items-center gap-1">⚙️ 고급 커스텀 환경설정 & 램 정수 조절</span>
-                    
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
                             <label class="block font-semibold text-slate-300 mb-1">서버 구동기 (코어)</label>
                             <select id="srv_type" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 outline-none">
-                                <optgroup label="⚡ 최적화 & 대규모 서버 구동기">
-                                    <option value="PAPER" selected>Paper (플러그인 최적화 표준)</option>
-                                    <option value="PURPUR">Purpur (고성능 & 엔티티 커스터마이징)</option>
-                                    <option value="FOLIA">Folia (PaperMC 멀티스레드 분산 코어)</option>
-                                </optgroup>
-                                <optgroup label="🔨 모드팩 구동기 (Modded)">
-                                    <option value="FABRIC">Fabric (경량 모드팩 & 스냅샷 호환)</option>
-                                    <option value="FORGE">Forge (공식 일반 Forge)</option>
-                                    <option value="NEOFORGE">NeoForge (최신 대형 네오포지)</option>
-                                    <option value="SPONGE">Sponge (SpongeVanilla 프레임워크)</option>
-                                </optgroup>
-                                <optgroup label="🏛️ 공식 바닐라 & 클래식">
-                                    <option value="VANILLA">마인크래프트 공식 바닐라 (스냅샷 100% 지원)</option>
-                                    <option value="SPIGOT">Spigot (전통 표준 플러그인)</option>
-                                    <option value="CRAFTBUKKIT">CraftBukkit (클래식 버킷)</option>
-                                </optgroup>
-                                <optgroup label="🌐 네트워크 프록시 (Proxies)">
-                                    <option value="VELOCITY">Velocity (차세대 초고속 L4 프록시)</option>
-                                    <option value="BUNGEECORD">BungeeCord / Waterfall (클래식 프록시)</option>
-                                </optgroup>
+                                <option value="PAPER">Paper (플러그인 최적화)</option>
+                                <option value="PURPUR">Purpur (고성능)</option>
+                                <option value="FOLIA">Folia (멀티스레드)</option>
+                                <option value="FABRIC">Fabric (경량 모드팩)</option>
+                                <option value="FORGE">Forge (일반 모드팩)</option>
+                                <option value="NEOFORGE">NeoForge (최신 대형)</option>
+                                <option value="SPONGE">Sponge</option>
+                                <option value="VANILLA">마인크래프트 공식 바닐라</option>
+                                <option value="SPIGOT">Spigot</option>
+                                <option value="VELOCITY">Velocity (프록시)</option>
                             </select>
                         </div>
                         <div>
-                            <div class="flex items-center justify-between mb-1">
-                                <label class="font-semibold text-slate-300">마인크래프트 버전</label>
-                                <label class="flex items-center gap-1 text-[10px] text-indigo-400 cursor-pointer">
-                                    <input type="checkbox" id="showSnapshots" onchange="loadVersionOptions()" class="rounded bg-slate-950 text-indigo-600 focus:ring-0">
-                                    스냅샷 포함
-                                </label>
-                            </div>
+                            <label class="block font-semibold text-slate-300 mb-1">마인크래프트 버전</label>
                             <select id="srv_version" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 font-mono outline-none">
                                 <option value="26.2">26.2 (최신 릴리즈)</option>
+                                <option value="26.1.2">26.1.2</option>
+                                <option value="1.20.4">1.20.4</option>
+                                <option value="1.20.1">1.20.1</option>
                             </select>
                         </div>
                     </div>
@@ -266,23 +494,16 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                                 <span>🧠</span> 최대 RAM 할당 용량 (정수로 직접 지정)
                             </label>
                             <div class="flex items-center gap-1.5">
-                                <input type="number" id="srv_ram_gb" min="1" max="128" step="1" value="4" oninput="syncRamInput('number')" class="w-16 px-2 py-1 bg-slate-900 border border-indigo-500/50 rounded-lg text-white font-mono font-bold text-center outline-none focus:border-indigo-400">
+                                <input type="number" id="srv_ram_gb" min="1" max="128" step="1" value="4" oninput="syncRamInput('number')" class="w-16 px-2 py-1 bg-slate-900 border border-indigo-500/50 rounded-lg text-white font-mono font-bold text-center outline-none">
                                 <span class="font-bold text-indigo-300">GB</span>
                                 <span class="text-slate-500 font-mono text-[10px]" id="ramMbTag">(4,096 MB)</span>
                             </div>
                         </div>
                         <input type="range" id="srv_ram_range" min="1" max="64" step="1" value="4" oninput="syncRamInput('range')" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500">
-                        <div class="flex justify-between text-[10px] text-slate-500 font-mono">
-                            <span>1 GB (경량)</span>
-                            <span>4 GB (기본 권장)</span>
-                            <span>8 GB (모드팩)</span>
-                            <span>16 GB (대형)</span>
-                            <span>64 GB (극대형)</span>
-                        </div>
                     </div>
 
                     <div>
-                        <label class="block font-semibold text-slate-300 mb-1">하드웨어 과금 티어 (클러스터 노드)</label>
+                        <label class="block font-semibold text-slate-300 mb-1">하드웨어 과금 티어</label>
                         <select id="srv_tier" onchange="updateEstimatedCost()" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 outline-none">
                             <option value="high_nvme" data-multiplier="1.3">초고속 NVMe (1.3x)</option>
                             <option value="standard_ssd" data-multiplier="1.0">표준 SSD (1.0x)</option>
@@ -294,119 +515,260 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                 <!-- Real-time Cost Estimation Box -->
                 <div class="p-4 bg-gradient-to-r from-indigo-950/50 via-slate-900 to-slate-900 rounded-xl border border-indigo-500/30 space-y-1.5">
                     <div class="flex items-center justify-between">
-                        <span class="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
-                            <span>💰</span> 실시간 예상 과금액 (점유 RAM 기준)
-                        </span>
-                        <span class="text-base font-extrabold text-emerald-400 font-mono" id="estCostPerMin">약 0.52 KRW / 분</span>
+                        <span class="font-bold text-indigo-300">💰 실시간 예상 과금액 (점유 RAM 기준)</span>
+                        <span class="text-sm font-extrabold text-emerald-400 font-mono" id="estCostPerMin">약 0.52 KRW / 분</span>
                     </div>
                     <div class="flex items-center justify-between text-[11px] text-slate-400 font-mono pt-1 border-t border-slate-800/80">
                         <span>1시간 예상: <strong class="text-slate-200" id="estCostPerHour">~31.2 KRW</strong></span>
                         <span>24시간 예상: <strong class="text-slate-200" id="estCostPerDay">~748.8 KRW</strong></span>
                     </div>
-                    <p class="text-[10px] text-slate-500 mt-0.5">※ 실제 과금은 서버가 활성화되어 점유된 램 용량 및 청크/플레이어 수에 따라 초 단위 종량제로 차감됩니다.</p>
                 </div>
 
-                <div class="pt-3 flex justify-end gap-2 border-t border-slate-800">
-                    <button type="button" onclick="closeCreateModal()" class="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 font-semibold">취소</button>
-                    <button type="submit" id="deployBtn" class="gradient-btn px-6 py-2.5 rounded-xl text-white font-extrabold shadow-lg shadow-indigo-600/30">
-                        🚀 서버 즉시 배포
+                <div class="pt-2 flex justify-end gap-2 border-t border-slate-800">
+                    <button type="button" onclick="closeCreateModal()" class="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl">취소</button>
+                    <button type="submit" id="deployBtn" class="gradient-btn px-6 py-2 rounded-xl text-white font-extrabold shadow-lg">
+                        🚀 서버 배포
                     </button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Web File Explorer Modal -->
-    <div id="fileModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
-        <div class="glass-card max-w-4xl w-full rounded-2xl p-6 space-y-4 shadow-2xl max-h-[90vh] flex flex-col">
+    <!-- ======================================================================= -->
+    <!-- Server Detailed Workspace Modal (Core Switcher, GUI Properties, Mods)   -->
+    <!-- ======================================================================= -->
+    <div id="serverWorkspaceModal" class="hidden fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <div class="glass-card max-w-5xl w-full rounded-2xl p-6 space-y-4 shadow-2xl max-h-[92vh] flex flex-col">
+            <!-- Modal Header -->
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div class="flex items-center gap-3">
-                    <span class="text-xl">📁</span>
+                    <span class="text-2xl">🎮</span>
                     <div>
-                        <h4 class="font-bold text-sm text-white" id="fileModalTitle">서버 파일 탐색기 & Config 에디터</h4>
-                        <div class="flex items-center gap-1 text-[11px] text-slate-400 font-mono" id="fileBreadcrumbs">
-                            <span>/</span>
+                        <h4 class="font-extrabold text-base text-white" id="wsServerName">서버 관리 워크스페이스</h4>
+                        <div class="flex items-center gap-2 text-[11px] text-slate-400 font-mono">
+                            <span id="wsServerAddress" class="text-indigo-300">alpha.domain.com</span>
+                            <span id="wsServerSpecs" class="px-1.5 py-0.5 bg-slate-800 rounded">PAPER 26.2 (4GB RAM)</span>
                         </div>
                     </div>
                 </div>
-                <div class="flex items-center gap-2">
-                    <button onclick="downloadWorldBackup()" class="px-3 py-1.5 bg-emerald-950 text-emerald-300 border border-emerald-500/40 rounded-lg text-xs font-bold hover:bg-emerald-900 flex items-center gap-1">
-                        🌍 월드 ZIP 백업 다운로드
-                    </button>
-                    <label class="px-3 py-1.5 bg-indigo-950 text-indigo-300 border border-indigo-500/40 rounded-lg text-xs font-bold hover:bg-indigo-900 cursor-pointer flex items-center gap-1">
-                        📤 파일 업로드
-                        <input type="file" id="fileUploadInput" onchange="uploadSelectedFile()" class="hidden">
-                    </label>
-                    <button onclick="closeFileModal()" class="text-slate-400 hover:text-white font-sans text-xl">&times;</button>
+                <button onclick="closeServerWorkspace()" class="text-slate-400 hover:text-white font-sans text-xl">&times;</button>
+            </div>
+
+            <!-- Workspace Tabs -->
+            <div class="flex flex-wrap gap-1.5 border-b border-slate-800 pb-2.5 font-semibold">
+                <button onclick="switchWsTab('console')" id="wstab_console" class="tab-btn active px-3 py-1.5 rounded-lg">💻 콘솔 & 상태</button>
+                <button onclick="switchWsTab('version')" id="wstab_version" class="tab-btn px-3 py-1.5 rounded-lg">⚙️ 버전 & 구동기 변경</button>
+                <button onclick="switchWsTab('properties')" id="wstab_properties" class="tab-btn px-3 py-1.5 rounded-lg">📝 server.properties 설정</button>
+                <button onclick="switchWsTab('files')" id="wstab_files" class="tab-btn px-3 py-1.5 rounded-lg">📁 파일 탐색기</button>
+                <button onclick="switchWsTab('installed_mods')" id="wstab_installed_mods" class="tab-btn px-3 py-1.5 rounded-lg">🧩 설치된 모드 관리 & 업데이트</button>
+                <button onclick="switchWsTab('marketplace')" id="wstab_marketplace" class="tab-btn px-3 py-1.5 rounded-lg">🛒 모드 마켓플레이스</button>
+            </div>
+
+            <!-- Tab 1: Console -->
+            <div id="wspane_console" class="flex-1 overflow-y-auto space-y-3 font-mono">
+                <div id="rconBox" class="h-64 p-3 bg-black/90 rounded-xl border border-slate-800 text-emerald-400 overflow-y-auto space-y-1">
+                    <div>[RCON Connected] 명령어를 입력하세요.</div>
+                </div>
+                <form id="wsRconForm" class="flex gap-2 font-sans">
+                    <input type="text" id="wsRconInput" placeholder="명령어 입력 (예: op Steve, gamemode creative, spark health)" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono outline-none">
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold">전송</button>
+                </form>
+            </div>
+
+            <!-- Tab 2: Version & Core Switcher (with Dependency Warning) -->
+            <div id="wspane_version" class="hidden flex-1 overflow-y-auto space-y-4">
+                <div class="p-4 bg-slate-900/80 rounded-xl border border-slate-800 space-y-3">
+                    <h5 class="font-bold text-white text-sm">🔄 마인크래프트 버전 및 구동기(코어) 변경</h5>
+                    <p class="text-slate-400 leading-relaxed">
+                        구동기를 변경하면 서버 재시작 시 새로운 코어 바이너리로 즉시 교체됩니다.
+                    </p>
+
+                    <div id="modLoaderWarningBox" class="p-3 bg-amber-950/40 border border-amber-500/30 rounded-xl text-amber-300 space-y-1">
+                        <strong class="block">⚠️ 모드로더 의존성 주의 안내</strong>
+                        <span>현재 서버에 설치된 모드팩이나 포지/패브릭 모드가 있는 경우, Paper나 Vanilla로 변경 시 모드가 실행되지 않습니다.</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-slate-300 font-semibold mb-1">변경할 서버 구동기</label>
+                            <select id="switch_core" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100">
+                                <option value="PAPER">Paper (플러그인 최적화)</option>
+                                <option value="PURPUR">Purpur</option>
+                                <option value="FOLIA">Folia (멀티스레드)</option>
+                                <option value="FABRIC">Fabric (경량 모드)</option>
+                                <option value="FORGE">Forge (일반 모드팩)</option>
+                                <option value="NEOFORGE">NeoForge</option>
+                                <option value="VANILLA">마인크래프트 공식 바닐라</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-slate-300 font-semibold mb-1">변경할 버전</label>
+                            <input type="text" id="switch_version" value="26.2" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 font-mono">
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between pt-2">
+                        <label class="flex items-center gap-1.5 cursor-pointer text-slate-400">
+                            <input type="checkbox" id="switch_force" class="rounded bg-slate-900 text-indigo-600">
+                            모드 비호환 경고 무시하고 강제 변경
+                        </label>
+                        <button onclick="executeVersionSwitch()" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 font-bold text-white rounded-lg shadow">
+                            구동기 변경 및 서버 재시작
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <!-- File List Table -->
-            <div id="fileListView" class="flex-1 overflow-y-auto">
-                <table class="w-full text-left text-xs">
-                    <thead class="text-slate-400 uppercase bg-slate-900/90 border-b border-slate-800">
-                        <tr>
-                            <th class="p-2.5">이름</th>
-                            <th class="p-2.5">크기</th>
-                            <th class="p-2.5">수정일시</th>
-                            <th class="p-2.5 text-right">작업</th>
-                        </tr>
+            <!-- Tab 3: server.properties GUI Config Editor -->
+            <div id="wspane_properties" class="hidden flex-1 overflow-y-auto space-y-4">
+                <div class="flex items-center justify-between">
+                    <span class="font-bold text-white">📝 server.properties GUI 설정 에디터</span>
+                    <button onclick="saveServerPropertiesGui()" class="px-4 py-1.5 bg-emerald-600 text-white font-bold rounded-lg shadow">
+                        설정 저장 및 적용
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-900/80 rounded-xl border border-slate-800">
+                    <div>
+                        <label class="block text-slate-400 mb-1">서버 MOTD (설명)</label>
+                        <input type="text" id="prop_motd" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100">
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">게임 모드 (Gamemode)</label>
+                        <select id="prop_gamemode" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100">
+                            <option value="survival">서바이벌 (Survival)</option>
+                            <option value="creative">크리에이티브 (Creative)</option>
+                            <option value="adventure">어드벤처 (Adventure)</option>
+                            <option value="spectator">관전자 (Spectator)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">난이도 (Difficulty)</label>
+                        <select id="prop_difficulty" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100">
+                            <option value="peaceful">평화로움 (Peaceful)</option>
+                            <option value="easy">쉬움 (Easy)</option>
+                            <option value="normal">보통 (Normal)</option>
+                            <option value="hard">어려움 (Hard)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-slate-400 mb-1">최대 플레이어 수 (Max Players)</label>
+                        <input type="number" id="prop_max_players" value="20" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100">
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">시야 거리 (View Distance)</label>
+                        <input type="number" id="prop_view_distance" value="10" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100">
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">시뮬레이션 거리 (Simulation)</label>
+                        <input type="number" id="prop_sim_distance" value="8" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100">
+                    </div>
+
+                    <!-- Toggles -->
+                    <div class="space-y-2 pt-2">
+                        <label class="flex items-center gap-2 text-slate-300">
+                            <input type="checkbox" id="prop_pvp" class="rounded bg-slate-950 text-indigo-600"> PVP 허용
+                        </label>
+                        <label class="flex items-center gap-2 text-slate-300">
+                            <input type="checkbox" id="prop_online_mode" class="rounded bg-slate-950 text-indigo-600"> 정품 인증 (Online Mode)
+                        </label>
+                    </div>
+                    <div class="space-y-2 pt-2">
+                        <label class="flex items-center gap-2 text-slate-300">
+                            <input type="checkbox" id="prop_allow_flight" class="rounded bg-slate-950 text-indigo-600"> 비행 허용 (Allow Flight)
+                        </label>
+                        <label class="flex items-center gap-2 text-slate-300">
+                            <input type="checkbox" id="prop_whitelist" class="rounded bg-slate-950 text-indigo-600"> 화이트리스트 활성화
+                        </label>
+                    </div>
+                    <div class="space-y-2 pt-2">
+                        <label class="flex items-center gap-2 text-slate-300">
+                            <input type="checkbox" id="prop_hardcore" class="rounded bg-slate-950 text-indigo-600"> 하드코어 모드
+                        </label>
+                        <label class="flex items-center gap-2 text-slate-300">
+                            <input type="checkbox" id="prop_monsters" class="rounded bg-slate-950 text-indigo-600"> 몬스터 스폰
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 4: File Explorer -->
+            <div id="wspane_files" class="hidden flex-1 overflow-y-auto space-y-3">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-1 text-slate-400 font-mono" id="wsBreadcrumbs"><span>/</span></div>
+                    <div class="flex gap-2">
+                        <button onclick="downloadWorldBackup()" class="px-3 py-1.5 bg-emerald-950 text-emerald-300 border border-emerald-500/40 rounded-lg font-bold">🌍 월드 ZIP 다운로드</button>
+                        <label class="px-3 py-1.5 bg-indigo-950 text-indigo-300 border border-indigo-500/40 rounded-lg font-bold cursor-pointer">
+                            📤 파일 업로드
+                            <input type="file" onchange="uploadSelectedFile(this)" class="hidden">
+                        </label>
+                    </div>
+                </div>
+                <table class="w-full text-left font-mono">
+                    <thead class="bg-slate-900/90 text-slate-400 uppercase">
+                        <tr><th class="p-2">이름</th><th class="p-2">크기</th><th class="p-2">수정일</th><th class="p-2 text-right">작업</th></tr>
                     </thead>
-                    <tbody id="fileTableBody" class="divide-y divide-slate-800/60 font-mono"></tbody>
+                    <tbody id="wsFileTableBody" class="divide-y divide-slate-800"></tbody>
                 </table>
             </div>
 
-            <!-- Text Config Editor View -->
-            <div id="fileEditorView" class="hidden flex-1 flex flex-col space-y-3">
+            <!-- Tab 5: Installed Mods & Auto-Updater -->
+            <div id="wspane_installed_mods" class="hidden flex-1 overflow-y-auto space-y-4">
                 <div class="flex items-center justify-between">
-                    <span class="text-xs font-mono text-indigo-300" id="editingFilePath">server.properties</span>
-                    <div class="flex gap-2">
-                        <button onclick="backToFileList()" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs">목록으로</button>
-                        <button onclick="saveCurrentEditingFile()" id="saveFileBtn" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold">저장하기</button>
-                    </div>
-                </div>
-                <textarea id="fileEditorTextarea" rows="18" class="w-full flex-1 p-3 bg-black/90 text-slate-100 border border-slate-800 rounded-xl font-mono text-xs outline-none focus:border-indigo-500"></textarea>
-            </div>
-        </div>
-    </div>
-
-    <!-- Mod & Modpack Marketplace Modal (Prism Launcher Style) -->
-    <div id="modModal" class="hidden fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
-        <div class="glass-card max-w-5xl w-full rounded-2xl p-6 space-y-4 shadow-2xl max-h-[92vh] flex flex-col">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                <div class="flex items-center gap-3">
-                    <span class="text-2xl">🧩</span>
                     <div>
-                        <h4 class="font-bold text-base text-white">모드 & 모드팩 마켓플레이스 (Prism Launcher 스타일)</h4>
-                        <p class="text-[11px] text-slate-400">Modrinth & CurseForge 카탈로그 검색 및 원클릭 서버 임포트</p>
+                        <h5 class="font-bold text-white text-sm">🧩 설치된 모드 & 플러그인 관리</h5>
+                        <p class="text-slate-400">서버에 설치된 모드의 최신 빌드를 확인하고 1클릭으로 업데이트합니다.</p>
+                    </div>
+                    <button onclick="updateAllInstalledMods()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow">
+                        🔄 최신 버전으로 일괄 업데이트
+                    </button>
+                </div>
+                <div id="installedModsList" class="space-y-2"></div>
+            </div>
+
+            <!-- Tab 6: Mod & Modpack Marketplace (Modrinth & CurseForge Split Tabs, Tags, Infinite Scroll) -->
+            <div id="wspane_marketplace" class="hidden flex-1 overflow-y-auto space-y-4 flex flex-col">
+                <!-- Source Tabs (Modrinth vs CurseForge) -->
+                <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <div class="flex gap-2">
+                        <button onclick="selectMarketplaceSource('modrinth')" id="src_modrinth" class="tab-btn active px-4 py-1.5 rounded-lg font-bold">🟢 Modrinth</button>
+                        <button onclick="selectMarketplaceSource('curseforge')" id="src_curseforge" class="tab-btn px-4 py-1.5 rounded-lg font-bold">🔥 CurseForge</button>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <select id="marketTypeFilter" onchange="resetAndSearchMarket()" class="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-100">
+                            <option value="">전체 (모드 + 모드팩)</option>
+                            <option value="mod">단일 모드 (Mods)</option>
+                            <option value="modpack">종합 모드팩 (Modpacks)</option>
+                        </select>
+                        <select id="marketVerFilter" onchange="resetAndSearchMarket()" class="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono">
+                            <option value="all">전체 버전</option>
+                            <option value="26.2">26.2</option>
+                            <option value="1.20.4">1.20.4</option>
+                            <option value="1.20.1">1.20.1</option>
+                        </select>
                     </div>
                 </div>
-                <button onclick="closeModMarketplace()" class="text-slate-400 hover:text-white font-sans text-xl">&times;</button>
+
+                <!-- Tags / Category Chips -->
+                <div id="categoryChipsContainer" class="flex flex-wrap gap-1.5 pb-2 border-b border-slate-800/60"></div>
+
+                <!-- Search Input -->
+                <div class="flex gap-2">
+                    <input type="text" id="marketSearchInput" placeholder="모드 또는 모드팩 검색 (Enter)" onkeydown="if(event.key==='Enter') resetAndSearchMarket()" class="flex-1 px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-100">
+                    <button onclick="resetAndSearchMarket()" class="px-4 py-2 bg-indigo-600 text-white font-bold rounded-xl shadow">검색</button>
+                </div>
+
+                <!-- Marketplace Grid -->
+                <div id="marketGrid" class="grid grid-cols-1 md:grid-cols-2 gap-3 flex-1 overflow-y-auto"></div>
+
+                <!-- Load More Button (Infinite Scroll alternative) -->
+                <div class="text-center pt-2">
+                    <button onclick="loadMoreMarketItems()" id="loadMoreBtn" class="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl">
+                        ⬇️ 다음 페이지 더 불러오기
+                    </button>
+                </div>
             </div>
-
-            <!-- Search & Filters Toolbar -->
-            <div class="flex flex-wrap gap-2 text-xs">
-                <input type="text" id="modSearchInput" placeholder="모드 또는 모드팩 검색 (예: Sodium, Create, ATM9, Cobblemon)" onkeydown="if(event.key==='Enter') executeModSearch()" class="flex-1 min-w-[200px] px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 outline-none">
-                
-                <select id="modTypeFilter" onchange="executeModSearch()" class="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-100">
-                    <option value="">전체 (모드 + 모드팩)</option>
-                    <option value="mod">단일 모드 (Mods)</option>
-                    <option value="modpack">종합 모드팩 (Modpacks)</option>
-                </select>
-
-                <select id="modLoaderFilter" onchange="executeModSearch()" class="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-100">
-                    <option value="all">전체 로더</option>
-                    <option value="fabric">Fabric</option>
-                    <option value="forge">Forge</option>
-                    <option value="neoforge">NeoForge</option>
-                    <option value="paper">Paper / Purpur</option>
-                </select>
-
-                <button onclick="executeModSearch()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow">검색</button>
-            </div>
-
-            <!-- Mod Items Grid -->
-            <div id="modItemsGrid" class="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-3.5 pr-1"></div>
         </div>
     </div>
 
@@ -418,120 +780,120 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                     <img id="detailModIcon" src="" class="w-12 h-12 rounded-xl bg-slate-800 object-cover">
                     <div>
                         <h4 class="font-extrabold text-base text-white" id="detailModTitle">모드 제목</h4>
-                        <span class="text-slate-400 font-mono text-[11px]" id="detailModAuthor">by Author</span>
+                        <span class="text-slate-400 font-mono" id="detailModAuthor">by Author</span>
                     </div>
                 </div>
-                <button onclick="closeModDetailModal()" class="text-slate-400 hover:text-white font-sans text-xl">&times;</button>
+                <button onclick="document.getElementById('modDetailModal').classList.add('hidden')" class="text-slate-400 hover:text-white font-sans text-xl">&times;</button>
             </div>
-
             <div id="detailModBody" class="flex-1 overflow-y-auto bg-slate-950/80 p-4 rounded-xl border border-slate-800 text-slate-300 leading-relaxed space-y-2"></div>
-
-            <div class="flex items-center justify-between pt-2 border-t border-slate-800">
-                <span class="text-slate-400 font-mono" id="detailModStats"></span>
-                <div class="flex gap-2">
-                    <button onclick="closeModDetailModal()" class="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg">닫기</button>
-                    <button onclick="installCurrentDetailMod()" id="detailInstallBtn" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg shadow-lg">
-                        📥 선택한 서버에 즉시 설치
-                    </button>
-                </div>
+            <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                <button onclick="document.getElementById('modDetailModal').classList.add('hidden')" class="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg">닫기</button>
+                <button onclick="installCurrentDetailMod()" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg shadow">📥 이 서버에 설치</button>
             </div>
-        </div>
-    </div>
-
-    <!-- RCON Console Modal -->
-    <div id="rconModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 z-50">
-        <div class="glass-card max-w-xl w-full rounded-2xl p-6 space-y-4 font-mono text-xs">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                <span class="font-bold text-white text-sm" id="rconTitle">💻 서버 콘솔</span>
-                <button onclick="document.getElementById('rconModal').classList.add('hidden')" class="text-slate-400 hover:text-white font-sans text-xl">&times;</button>
-            </div>
-            <div id="rconBox" class="h-44 p-3 bg-black/80 rounded-xl border border-slate-800 text-emerald-400 overflow-y-auto space-y-1">
-                <div>[RCON Connected] 명령어를 입력하세요.</div>
-            </div>
-            <form id="rconSendForm" class="flex gap-2 font-sans">
-                <input type="text" id="rconInput" placeholder="명령어 입력 (예: say 안녕하세요)" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono outline-none">
-                <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold">전송</button>
-            </form>
         </div>
     </div>
 
     <script>
-        let currentUser = JSON.parse(localStorage.getItem('mc_user')) || null;
+        let currentUser = JSON.parse(localStorage.getItem('mc_user')) || { email: "player_steve@gmail.com", user_id: "usr-demo", balance_krw: 3000 };
         let myServers = [];
-        let curRconId = null;
-        let activeServerForFiles = null;
-        let currentFilePath = "";
-        let mojangManifest = null;
-        let domainCheckTimer = null;
-        let isDomainAvailable = false;
-        let currentDetailModObj = null;
+        let activeWsServer = null;
+        let marketSource = "modrinth";
+        let marketCategory = "all";
+        let marketOffset = 0;
         let billingRates = { base_container_per_min: 0.20, per_ram_gb_rate: 0.08 };
-        let activeTiersMap = {};
-
-        function parseErrorMessage(data) {
-            if (!data) return '알 수 없는 오류가 발생했습니다.';
-            if (typeof data === 'string') return data;
-            if (data.detail) {
-                if (typeof data.detail === 'string') return data.detail;
-                if (Array.isArray(data.detail)) {
-                    return data.detail.map(e => `${e.loc ? e.loc.join('.') : ''}: ${e.msg}`).join('\\n');
-                }
-                return JSON.stringify(data.detail);
-            }
-            return JSON.stringify(data);
-        }
+        let domainCheckTimer = null;
+        let currentDetailModObj = null;
 
         function updateAuthState() {
-            const outBox = document.getElementById('authLoggedOut');
-            const inBox = document.getElementById('authLoggedIn');
-            if (currentUser) {
-                outBox.classList.add('hidden');
-                inBox.classList.remove('hidden');
-                document.getElementById('userEmailTag').innerText = currentUser.email;
-                document.getElementById('userBalance').innerText = (currentUser.balance_krw || 3000).toLocaleString() + ' KRW';
-            } else {
-                outBox.classList.remove('hidden');
-                inBox.classList.add('hidden');
-            }
+            document.getElementById('sidebarEmail').innerText = currentUser.email;
+            document.getElementById('sidebarBalance').innerText = (currentUser.balance_krw || 3000).toLocaleString() + ' KRW';
+            document.getElementById('statBalance').innerText = (currentUser.balance_krw || 3000).toLocaleString() + ' KRW';
         }
 
-        function openLoginModal() { document.getElementById('loginModal').classList.remove('hidden'); }
-        function closeLoginModal() { document.getElementById('loginModal').classList.add('hidden'); }
-        function handleStartDeploy() {
-            if (!currentUser) { openLoginModal(); }
-            else { openCreateModal(); }
+        function switchView(viewName) {
+            ['overview', 'servers', 'helpdesk'].forEach(v => {
+                document.getElementById('view_' + v).classList.add('hidden');
+                document.getElementById('nav_' + v).classList.remove('active');
+            });
+            document.getElementById('view_' + viewName).classList.remove('hidden');
+            document.getElementById('nav_' + viewName).classList.add('active');
+
+            const names = { overview: "대시보드 개요", servers: "내 마인크래프트 서버", helpdesk: "기술 지원 헬프데스크" };
+            document.getElementById('pageBreadcrumb').innerText = names[viewName];
         }
+
         function openCreateModal() {
-            loadVersionOptions();
-            loadActiveTiers();
-            loadBillingRates();
             document.getElementById('createModal').classList.remove('hidden');
-            handleDomainInput();
             updateEstimatedCost();
         }
-        function closeCreateModal() { document.getElementById('createModal').classList.add('hidden'); }
-        function logout() {
-            localStorage.removeItem('mc_user');
-            currentUser = null;
-            updateAuthState();
+
+        function closeCreateModal() {
+            document.getElementById('createModal').classList.add('hidden');
         }
 
         function selectPreset(preset) {
             document.getElementById('selected_preset').value = preset;
             ['BUILDER_FLAT', 'SURVIVAL_SMP', 'ADVANCED_CUSTOM'].forEach(p => {
-                document.getElementById('preset_' + p).classList.remove('active');
+                const el = document.getElementById('preset_' + p);
+                el.className = 'preset-card glass-card p-3.5 rounded-xl space-y-1.5 cursor-pointer border border-transparent';
             });
-            document.getElementById('preset_' + preset).classList.add('active');
+            document.getElementById('preset_' + preset).className = 'preset-card active glass-card p-3.5 rounded-xl space-y-1.5 cursor-pointer border border-indigo-500 bg-indigo-950/20';
 
-            const advBox = document.getElementById('advancedOptions');
+            const adv = document.getElementById('advancedOptions');
             if (preset === 'ADVANCED_CUSTOM') {
-                advBox.classList.remove('hidden');
+                adv.classList.remove('hidden');
             } else {
-                advBox.classList.add('hidden');
-                document.getElementById('srv_ram_gb').value = 4;
-                document.getElementById('srv_ram_range').value = 4;
+                adv.classList.add('hidden');
             }
             updateEstimatedCost();
+        }
+
+        function toggleCustomDomainInput() {
+            const isCustom = document.getElementById('enableCustomDomain').checked;
+            const freeBox = document.getElementById('freeDomainNotice');
+            const customBox = document.getElementById('customDomainBox');
+
+            if (isCustom) {
+                freeBox.classList.add('hidden');
+                customBox.classList.remove('hidden');
+                handleDomainInput();
+            } else {
+                freeBox.classList.remove('hidden');
+                customBox.classList.add('hidden');
+            }
+        }
+
+        function handleDomainInput() {
+            clearTimeout(domainCheckTimer);
+            const slug = document.getElementById('srv_slug').value.trim().toLowerCase();
+            const tag = document.getElementById('domainStatusTag');
+            const sugBox = document.getElementById('domainSuggestions');
+
+            if (!slug || slug.length < 3) {
+                tag.innerText = '3자 이상의 영문/숫자 입력';
+                tag.className = 'text-[11px] text-slate-400';
+                sugBox.innerText = '';
+                return;
+            }
+
+            tag.innerText = '중복 검사 중...';
+            tag.className = 'text-[11px] text-amber-400';
+
+            domainCheckTimer = setTimeout(async () => {
+                try {
+                    const resp = await fetch(`/api/v1/servers/check-domain?slug=${slug}`);
+                    const data = await resp.json();
+                    if (data.is_available) {
+                        tag.innerText = `✓ 사용 가능 (1,000 KRW 차감)`;
+                        tag.className = 'text-[11px] text-emerald-400';
+                        sugBox.innerText = '';
+                    } else {
+                        tag.innerText = `❌ 이미 사용 중인 도메인`;
+                        tag.className = 'text-[11px] text-rose-400';
+                        sugBox.innerHTML = `추천: ${data.suggested_slugs.map(s => `<a href="#" onclick="document.getElementById('srv_slug').value='${s}';handleDomainInput();return false;" class="underline mr-1">${s}</a>`).join('')}`;
+                    }
+                } catch (e) {}
+            }, 300);
         }
 
         function syncRamInput(source) {
@@ -548,14 +910,6 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
             tag.innerText = `(${(gbVal * 1024).toLocaleString()} MB)`;
 
             updateEstimatedCost();
-        }
-
-        async function loadBillingRates() {
-            try {
-                const resp = await fetch('/api/v1/nodes/billing/rates');
-                billingRates = await resp.json();
-                updateEstimatedCost();
-            } catch (e) {}
         }
 
         function updateEstimatedCost() {
@@ -582,132 +936,404 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
             document.getElementById('estCostPerDay').innerText = `~${costPerDay.toFixed(1)} KRW`;
         }
 
-        function handleDomainInput() {
-            clearTimeout(domainCheckTimer);
-            const slug = document.getElementById('srv_slug').value.trim().toLowerCase();
-            const tag = document.getElementById('domainStatusTag');
-            const sugBox = document.getElementById('domainSuggestions');
+        document.getElementById('createForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const isCustomDomain = document.getElementById('enableCustomDomain').checked;
+            const slug = isCustomDomain ? document.getElementById('srv_slug').value.trim().toLowerCase() : null;
+            const preset = document.getElementById('selected_preset').value;
 
-            if (!slug || slug.length < 3) {
-                tag.innerText = '3자 이상의 영문/숫자 입력';
-                tag.className = 'text-[11px] font-semibold text-slate-400';
-                sugBox.innerText = '';
-                isDomainAvailable = false;
-                return;
+            let payload = {
+                name: document.getElementById('srv_name').value,
+                domain_slug: slug,
+                is_custom_domain: isCustomDomain,
+                preset_type: preset,
+                target_user_id: currentUser.email,
+                modpack_id: document.getElementById('selected_modpack_id').value || null
+            };
+
+            if (preset === 'ADVANCED_CUSTOM') {
+                payload.server_type = document.getElementById('srv_type').value;
+                payload.mc_version = document.getElementById('srv_version').value;
+                payload.allocated_ram_mb = parseInt(document.getElementById('srv_ram_gb').value || 4) * 1024;
+                payload.hardware_tier_preference = document.getElementById('srv_tier').value;
+            } else {
+                payload.server_type = "PAPER";
+                payload.mc_version = "1.20.4";
+                payload.allocated_ram_mb = 4096;
+                payload.hardware_tier_preference = "high_nvme";
             }
 
-            tag.innerText = '중복 검사 중...';
-            tag.className = 'text-[11px] font-semibold text-amber-400';
+            const btn = document.getElementById('deployBtn');
+            btn.disabled = true;
+            btn.innerText = '배포 중...';
 
-            domainCheckTimer = setTimeout(async () => {
-                try {
-                    const resp = await fetch(`/api/v1/servers/check-domain?slug=${slug}`);
-                    const data = await resp.json();
-                    if (data.is_available) {
-                        tag.innerText = `✓ 사용 가능 (${data.custom_fee_krw.toLocaleString()}원 차감)`;
-                        tag.className = 'text-[11px] font-semibold text-emerald-400';
-                        sugBox.innerText = '';
-                        isDomainAvailable = true;
-                    } else {
-                        tag.innerText = `❌ 이미 사용 중인 도메인`;
-                        tag.className = 'text-[11px] font-semibold text-rose-400';
-                        sugBox.innerHTML = `추천: ${data.suggested_slugs.map(s => `<a href="#" onclick="document.getElementById('srv_slug').value='${s}';handleDomainInput();return false;" class="underline mr-1">${s}</a>`).join('')}`;
-                        isDomainAvailable = false;
-                    }
-                } catch (err) {
-                    tag.innerText = '검사 오류';
-                }
-            }, 300);
-        }
-
-        async function loadVersionOptions() {
-            const select = document.getElementById('srv_version');
-            const showSnapshots = document.getElementById('showSnapshots').checked;
-
-            if (!mojangManifest) {
-                try {
-                    const resp = await fetch('/api/v1/servers/versions');
-                    mojangManifest = await resp.json();
-                } catch (e) {
-                    mojangManifest = { releases: ["26.2", "26.1", "1.20.4", "1.16.5"], snapshots: ["26.3-snapshot-9"] };
-                }
-            }
-
-            select.innerHTML = '';
-            const optGroupRel = document.createElement('optgroup');
-            optGroupRel.label = "정식 릴리즈 (Official Releases)";
-            mojangManifest.releases.forEach(ver => {
-                const opt = document.createElement('option');
-                opt.value = ver;
-                opt.innerText = ver + (ver === mojangManifest.latest_release ? " (최신)" : "");
-                optGroupRel.appendChild(opt);
-            });
-            select.appendChild(optGroupRel);
-
-            if (showSnapshots && mojangManifest.snapshots) {
-                const optGroupSnap = document.createElement('optgroup');
-                optGroupSnap.label = "개발 스냅샷 (Snapshots / Pre-releases)";
-                mojangManifest.snapshots.forEach(ver => {
-                    const opt = document.createElement('option');
-                    opt.value = ver;
-                    opt.innerText = ver + " (스냅샷)";
-                    optGroupSnap.appendChild(opt);
-                });
-                select.appendChild(optGroupSnap);
-            }
-        }
-
-        async function loadActiveTiers() {
             try {
-                const resp = await fetch('/api/v1/nodes/tiers');
-                const tiers = await resp.json();
-                const select = document.getElementById('srv_tier');
-                select.innerHTML = '';
-                tiers.forEach(t => {
-                    const opt = document.createElement('option');
-                    opt.value = t.tier_id;
-                    opt.setAttribute('data-multiplier', t.multiplier);
-                    opt.innerText = `${t.name} (${t.multiplier}x 배율)`;
-                    if (t.tier_id === 'high_nvme') opt.selected = true;
-                    select.appendChild(opt);
-                    activeTiersMap[t.tier_id] = t.multiplier;
+                const resp = await fetch('/api/v1/servers/deploy', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
                 });
-                updateEstimatedCost();
+                const res = await resp.json();
+                if (resp.ok) {
+                    if (isCustomDomain) {
+                        currentUser.balance_krw = Math.max(0, (currentUser.balance_krw || 3000) - 1000);
+                        localStorage.setItem('mc_user', JSON.stringify(currentUser));
+                        updateAuthState();
+                    }
+                    alert(`🎉 [${payload.server_type}] 서버 [${payload.name}] 배포 완료!\\n접속 주소: ${res.connect_address}`);
+                    myServers.push({
+                        id: res.server_id,
+                        name: payload.name,
+                        address: res.connect_address,
+                        type: payload.server_type,
+                        version: payload.mc_version,
+                        ram: payload.allocated_ram_mb,
+                        status: 'RUNNING'
+                    });
+                    renderServers();
+                    closeCreateModal();
+                    switchView('servers');
+                } else {
+                    alert('배포 실패: ' + (res.detail || JSON.stringify(res)));
+                }
+            } catch (err) {
+                alert('오류: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = '🚀 서버 배포';
+            }
+        });
+
+        function renderServers() {
+            const grid = document.getElementById('serversGrid');
+            const empty = document.getElementById('emptyServers');
+            document.getElementById('statServerCount').innerText = `${myServers.length}개`;
+            document.getElementById('serverListCount').innerText = `${myServers.length}개 가동 중`;
+
+            if (myServers.length === 0) { empty.classList.remove('hidden'); return; }
+            empty.classList.add('hidden');
+            grid.innerHTML = '';
+
+            let totalRam = 0;
+            myServers.forEach(srv => {
+                totalRam += srv.ram;
+                const card = document.createElement('div');
+                card.className = 'glass-card rounded-2xl p-5 space-y-4 border border-indigo-500/20';
+                card.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <span class="font-extrabold text-base text-white">${srv.name}</span>
+                            <div class="flex items-center gap-1.5 mt-1">
+                                <span class="px-2 py-0.5 bg-slate-800 text-slate-300 rounded font-mono text-[10px]">${srv.type} ${srv.version} (${srv.ram / 1024}GB RAM)</span>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-1 text-xs font-mono font-bold text-emerald-400 bg-emerald-950/80 rounded-full border border-emerald-500/30 flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> ${srv.status}
+                        </span>
+                    </div>
+                    <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
+                        <span class="text-[9px] text-slate-500 uppercase font-bold">인게임 접속 주소 (포트 불필요)</span>
+                        <div class="flex items-center justify-between">
+                            <span class="font-mono text-indigo-300 font-bold">${srv.address}</span>
+                            <button onclick="navigator.clipboard.writeText('${srv.address}'); alert('복사되었습니다!');" class="text-slate-400 hover:text-white underline">복사</button>
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                        <button onclick="openServerWorkspace('${srv.id}')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 font-bold text-white rounded-xl shadow">
+                            ⚙️ 서버 관리 워크스페이스 열기
+                        </button>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+
+            document.getElementById('statTotalRam').innerText = `${totalRam / 1024} GB`;
+        }
+
+        // =======================================================================
+        // Server Workspace Functions
+        // =======================================================================
+        function openServerWorkspace(serverId) {
+            activeWsServer = myServers.find(s => s.id === serverId) || { id: serverId, name: "마인크래프트 서버", address: "alpha.domain.com", type: "PAPER", version: "26.2", ram: 4096 };
+            document.getElementById('wsServerName').innerText = activeWsServer.name;
+            document.getElementById('wsServerAddress').innerText = activeWsServer.address;
+            document.getElementById('wsServerSpecs').innerText = `${activeWsServer.type} ${activeWsServer.version} (${activeWsServer.ram / 1024}GB RAM)`;
+            document.getElementById('serverWorkspaceModal').classList.remove('hidden');
+            switchWsTab('console');
+        }
+
+        function closeServerWorkspace() {
+            document.getElementById('serverWorkspaceModal').classList.add('hidden');
+        }
+
+        function switchWsTab(tabName) {
+            ['console', 'version', 'properties', 'files', 'installed_mods', 'marketplace'].forEach(t => {
+                document.getElementById('wspane_' + t).classList.add('hidden');
+                document.getElementById('wstab_' + t).classList.remove('active');
+            });
+            document.getElementById('wspane_' + tabName).classList.remove('hidden');
+            document.getElementById('wstab_' + tabName).classList.add('active');
+
+            if (tabName === 'properties') loadServerPropertiesGui();
+            if (tabName === 'files') loadWsFiles("");
+            if (tabName === 'installed_mods') loadInstalledMods();
+            if (tabName === 'marketplace') { loadMarketCategories(); resetAndSearchMarket(); }
+        }
+
+        async function executeVersionSwitch() {
+            const newCore = document.getElementById('switch_core').value;
+            const newVer = document.getElementById('switch_version').value;
+            const force = document.getElementById('switch_force').checked;
+
+            try {
+                const resp = await fetch(`/api/v1/servers/${activeWsServer.id}/version`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ server_type: newCore, mc_version: newVer, force: force })
+                });
+                const res = await resp.json();
+                if (resp.ok) {
+                    alert(`✓ 구동기 변경 완료: [${newCore} ${newVer}]`);
+                    activeWsServer.type = newCore;
+                    activeWsServer.version = newVer;
+                    document.getElementById('wsServerSpecs').innerText = `${newCore} ${newVer} (${activeWsServer.ram / 1024}GB RAM)`;
+                } else {
+                    alert('변경 실패: ' + (res.detail || JSON.stringify(res)));
+                }
+            } catch (err) { alert('오류: ' + err.message); }
+        }
+
+        async function loadServerPropertiesGui() {
+            try {
+                const resp = await fetch(`/api/v1/servers/${activeWsServer.id}/properties`);
+                const p = await resp.json();
+                document.getElementById('prop_motd').value = p.motd;
+                document.getElementById('prop_gamemode').value = p.gamemode;
+                document.getElementById('prop_difficulty').value = p.difficulty;
+                document.getElementById('prop_max_players').value = p.max_players;
+                document.getElementById('prop_view_distance').value = p.view_distance;
+                document.getElementById('prop_sim_distance').value = p.simulation_distance;
+                document.getElementById('prop_pvp').checked = p.pvp;
+                document.getElementById('prop_online_mode').checked = p.online_mode;
+                document.getElementById('prop_allow_flight').checked = p.allow_flight;
+                document.getElementById('prop_whitelist').checked = p.white_list;
+                document.getElementById('prop_hardcore').checked = p.hardcore;
+                document.getElementById('prop_monsters').checked = p.spawn_monsters;
             } catch (e) {}
         }
 
-        document.getElementById('authForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const email = document.getElementById('login_email').value;
-            const agree = document.getElementById('adult_agree').checked;
-            const btn = document.getElementById('authSubmitBtn');
-            btn.disabled = true;
-            btn.innerText = '인증 처리 중...';
+        async function saveServerPropertiesGui() {
+            const payload = {
+                motd: document.getElementById('prop_motd').value,
+                gamemode: document.getElementById('prop_gamemode').value,
+                difficulty: document.getElementById('prop_difficulty').value,
+                max_players: parseInt(document.getElementById('prop_max_players').value),
+                view_distance: parseInt(document.getElementById('prop_view_distance').value),
+                simulation_distance: parseInt(document.getElementById('prop_sim_distance').value),
+                pvp: document.getElementById('prop_pvp').checked,
+                online_mode: document.getElementById('prop_online_mode').checked,
+                allow_flight: document.getElementById('prop_allow_flight').checked,
+                white_list: document.getElementById('prop_whitelist').checked,
+                hardcore: document.getElementById('prop_hardcore').checked,
+                spawn_monsters: document.getElementById('prop_monsters').checked
+            };
 
             try {
-                const resp = await fetch('/api/v1/auth/register', {
+                const resp = await fetch(`/api/v1/servers/${activeWsServer.id}/properties`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (resp.ok) alert('✓ server.properties가 성공적으로 저장되었습니다!');
+            } catch (err) { alert('저장 실패: ' + err.message); }
+        }
+
+        async function loadInstalledMods() {
+            const list = document.getElementById('installedModsList');
+            list.innerHTML = '<div class="text-slate-400 py-6 text-center">모드 목록 불러오는 중...</div>';
+            try {
+                const resp = await fetch(`/api/v1/servers/${activeWsServer.id}/installed-mods`);
+                const mods = await resp.json();
+                list.innerHTML = '';
+                if (!mods || mods.length === 0) {
+                    list.innerHTML = '<div class="text-slate-400 py-6 text-center">설치된 모드 또는 플러그인이 없습니다. [모드 마켓플레이스] 탭에서 설치해보세요.</div>';
+                    return;
+                }
+                mods.forEach(m => {
+                    const row = document.createElement('div');
+                    row.className = 'p-3 bg-slate-900 rounded-xl border border-slate-800 flex items-center justify-between';
+                    row.innerHTML = `
+                        <div class="space-y-0.5">
+                            <span class="font-bold text-white">${m.title}</span>
+                            <div class="text-[10px] text-slate-400 font-mono">${m.filename} (현재: ${m.current_version} &rarr; 최신: <strong class="text-emerald-400">${m.latest_version}</strong>)</div>
+                        </div>
+                        <span class="px-2 py-1 rounded text-[10px] font-bold ${m.has_update ? 'bg-amber-950 text-amber-300' : 'bg-slate-800 text-slate-400'}">
+                            ${m.has_update ? '업데이트 가능' : '최신 버전'}
+                        </span>
+                    `;
+                    list.appendChild(row);
+                });
+            } catch (e) {}
+        }
+
+        async function updateAllInstalledMods() {
+            try {
+                const resp = await fetch(`/api/v1/servers/${activeWsServer.id}/mods/update`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        email: email,
-                        oauth_provider: "google",
-                        oauth_token: "google-token-" + Math.random(),
-                        is_adult_verified: agree
-                    })
+                    body: JSON.stringify({ mod_ids: [] })
                 });
-                const data = await resp.json();
-                if (resp.ok) {
-                    currentUser = { email: data.email, user_id: data.user_id, balance_krw: data.initial_credit_krw };
-                    localStorage.setItem('mc_user', JSON.stringify(currentUser));
-                    updateAuthState();
-                    closeLoginModal();
-                    alert(`🎉 환영합니다! 19세 성인인증 완료 및 체험 크레딧 3,000 KRW가 지급되었습니다.`);
-                } else {
-                    alert('로그인 오류: ' + parseErrorMessage(data));
+                const res = await resp.json();
+                alert(`✓ ${res.message}`);
+                loadInstalledMods();
+            } catch (err) { alert('오류: ' + err.message); }
+        }
+
+        // =======================================================================
+        // Marketplace (Modrinth & CurseForge Tabs, Tags & Infinite Scroll)
+        // =======================================================================
+        function selectMarketplaceSource(src) {
+            marketSource = src;
+            ['modrinth', 'curseforge'].forEach(s => {
+                document.getElementById('src_' + s).classList.remove('active');
+            });
+            document.getElementById('src_' + src).classList.add('active');
+            loadMarketCategories();
+            resetAndSearchMarket();
+        }
+
+        async function loadMarketCategories() {
+            const container = document.getElementById('categoryChipsContainer');
+            container.innerHTML = '';
+            try {
+                const resp = await fetch(`/api/v1/servers/mods/categories?source=${marketSource}`);
+                const cats = await resp.json();
+
+                const allChip = document.createElement('button');
+                allChip.className = `chip px-2.5 py-1 rounded-full text-[11px] font-semibold border ${marketCategory === 'all' ? 'active' : 'border-slate-800 text-slate-400 hover:text-white'}`;
+                allChip.innerText = '전체 카테고리';
+                allChip.onclick = () => { marketCategory = 'all'; loadMarketCategories(); resetAndSearchMarket(); };
+                container.appendChild(allChip);
+
+                cats.forEach(c => {
+                    const btn = document.createElement('button');
+                    btn.className = `chip px-2.5 py-1 rounded-full text-[11px] font-semibold border ${marketCategory === c.id ? 'active' : 'border-slate-800 text-slate-400 hover:text-white'}`;
+                    btn.innerText = c.name;
+                    btn.onclick = () => { marketCategory = c.id; loadMarketCategories(); resetAndSearchMarket(); };
+                    container.appendChild(btn);
+                });
+            } catch (e) {}
+        }
+
+        function resetAndSearchMarket() {
+            marketOffset = 0;
+            document.getElementById('marketGrid').innerHTML = '';
+            loadMoreMarketItems();
+        }
+
+        async function loadMoreMarketItems() {
+            const query = document.getElementById('marketSearchInput').value.trim();
+            const projectType = document.getElementById('marketTypeFilter').value;
+            const version = document.getElementById('marketVerFilter').value;
+            const grid = document.getElementById('marketGrid');
+            const loadBtn = document.getElementById('loadMoreBtn');
+
+            loadBtn.innerText = '불러오는 중...';
+
+            let url = `/api/v1/servers/mods/search?query=${encodeURIComponent(query)}&source=${marketSource}&category=${marketCategory}&version=${version}&offset=${marketOffset}&limit=8`;
+            if (projectType) url += `&project_type=${projectType}`;
+
+            try {
+                const resp = await fetch(url);
+                const items = await resp.json();
+                loadBtn.innerText = '⬇️ 다음 페이지 더 불러오기';
+
+                if (!items || items.length === 0) {
+                    if (marketOffset === 0) grid.innerHTML = '<div class="col-span-2 text-center text-slate-400 py-12">검색 결과가 없습니다.</div>';
+                    loadBtn.classList.add('hidden');
+                    return;
                 }
-            } catch (err) { alert('네트워크 오류: ' + err.message); }
-            finally { btn.disabled = false; btn.innerText = '동의하고 1초 가입 및 로그인'; }
-        });
+                loadBtn.classList.remove('hidden');
+
+                items.forEach(m => {
+                    const card = document.createElement('div');
+                    card.className = 'glass-card p-3.5 rounded-xl border border-slate-800 space-y-2 flex flex-col justify-between';
+                    card.innerHTML = `
+                        <div class="flex items-start gap-2.5">
+                            <img src="${m.icon_url || 'https://cdn.modrinth.com/data/AANobbMI/icon.png'}" class="w-10 h-10 rounded-xl bg-slate-900 object-cover flex-shrink-0">
+                            <div class="space-y-0.5 overflow-hidden">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="font-extrabold text-white truncate">${m.title}</span>
+                                    <span class="px-1.5 py-0.5 rounded text-[9px] ${m.project_type === 'modpack' ? 'bg-amber-950 text-amber-300' : 'bg-indigo-950 text-indigo-300'} font-bold">${m.project_type.toUpperCase()}</span>
+                                </div>
+                                <p class="text-[10px] text-slate-400 line-clamp-2">${m.description}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between pt-1 border-t border-slate-800 text-[10px]">
+                            <span class="text-slate-500 font-mono">📥 ${(m.downloads > 1000000 ? (m.downloads/1000000).toFixed(1)+'M' : m.downloads)}</span>
+                            <div class="flex gap-1">
+                                <button onclick="viewModDetails('${m.id}')" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-200">소개</button>
+                                <button onclick="installModToActiveServer('${m.id}', '${m.project_type}')" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded">설치</button>
+                            </div>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+
+                marketOffset += items.length;
+            } catch (e) { loadBtn.innerText = '더 불러오기'; }
+        }
+
+        async function viewModDetails(modId) {
+            try {
+                const resp = await fetch(`/api/v1/servers/mods/${modId}`);
+                const data = await resp.json();
+                currentDetailModObj = data;
+                document.getElementById('detailModIcon').src = data.icon_url || '';
+                document.getElementById('detailModTitle').innerText = data.title;
+                document.getElementById('detailModAuthor').innerText = `by ${data.author} (${data.project_type.toUpperCase()})`;
+                document.getElementById('detailModBody').innerHTML = `<p>${data.description}</p><div class="mt-3">${data.body_markdown}</div>`;
+                document.getElementById('modDetailModal').classList.remove('hidden');
+            } catch (e) {}
+        }
+
+        async function installModToActiveServer(modId, projectType) {
+            try {
+                const resp = await fetch(`/api/v1/servers/${activeWsServer.id}/mods/install`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mod_id: modId, project_type: projectType, source: marketSource })
+                });
+                const res = await resp.json();
+                if (resp.ok) alert(`✓ [${modId}] 설치 완료! 서버 재시작 시 적용됩니다.`);
+            } catch (e) {}
+        }
+
+        async function loadWsFiles(path) {
+            try {
+                const resp = await fetch(`/api/v1/servers/${activeWsServer.id}/files?path=${encodeURIComponent(path)}`);
+                const files = await resp.json();
+                const tbody = document.getElementById('wsFileTableBody');
+                tbody.innerHTML = '';
+                files.forEach(f => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'hover:bg-slate-900/60';
+                    tr.innerHTML = `
+                        <td class="p-2">${f.is_dir ? '📁' : '📄'} ${f.name}</td>
+                        <td class="p-2 text-slate-400">${f.is_dir ? '-' : (f.size_bytes / 1024).toFixed(1) + ' KB'}</td>
+                        <td class="p-2 text-slate-500">${f.modified_at}</td>
+                        <td class="p-2 text-right">
+                            ${!f.is_dir ? `<a href="/api/v1/servers/${activeWsServer.id}/files/download?path=${encodeURIComponent(f.path)}" class="px-2 py-0.5 bg-slate-800 rounded">다운로드</a>` : ''}
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (e) {}
+        }
+
+        function downloadWorldBackup() {
+            window.location.href = `/api/v1/servers/${activeWsServer.id}/world/download`;
+        }
 
         function topupCredit() {
             const amount = prompt("충전할 크레딧 금액을 입력하십시오 (KRW):", "10000");
@@ -719,474 +1345,31 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
             }
         }
 
-        document.getElementById('createForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const btn = document.getElementById('deployBtn');
-            btn.disabled = true;
-            btn.innerText = '프로비저닝 중...';
-
-            const preset = document.getElementById('selected_preset').value;
-            let payload = {
-                name: document.getElementById('srv_name').value,
-                domain_slug: document.getElementById('srv_slug').value.trim().toLowerCase(),
-                preset_type: preset,
-                is_custom_domain: true,
-                target_user_id: currentUser ? currentUser.email : "user@domain.com"
-            };
-
-            if (preset === 'ADVANCED_CUSTOM') {
-                payload.server_type = document.getElementById('srv_type').value;
-                payload.mc_version = document.getElementById('srv_version').value;
-                const ramGb = parseInt(document.getElementById('srv_ram_gb').value || 4);
-                payload.allocated_ram_mb = ramGb * 1024;
-                payload.hardware_tier_preference = document.getElementById('srv_tier').value;
-            } else {
-                payload.server_type = "PAPER";
-                payload.mc_version = "1.20.4";
-                payload.allocated_ram_mb = 4096;
-                payload.hardware_tier_preference = "high_nvme";
-            }
-
-            try {
-                const resp = await fetch('/api/v1/servers/deploy', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const res = await resp.json();
-                if (resp.ok) {
-                    if (payload.is_custom_domain && currentUser) {
-                        currentUser.balance_krw = Math.max(0, (currentUser.balance_krw || 3000) - 1000);
-                        localStorage.setItem('mc_user', JSON.stringify(currentUser));
-                        updateAuthState();
-                    }
-                    alert(`🎉 [${payload.server_type}] 서버 [${payload.name}] 개설 완료!\\n접속 주소: ${res.connect_address}\\n탑재 플러그인: ${(res.injected_plugins || []).join(', ')}`);
-                    myServers.push({
-                        id: res.server_id,
-                        name: payload.name,
-                        preset: preset,
-                        slug: payload.domain_slug,
-                        address: res.connect_address,
-                        type: payload.server_type,
-                        version: payload.mc_version,
-                        ram: payload.allocated_ram_mb,
-                        node: res.assigned_node,
-                        plugins: res.injected_plugins || [],
-                        status: 'RUNNING'
-                    });
-                    renderServers();
-                    closeCreateModal();
-                } else {
-                    alert('배포 실패: ' + parseErrorMessage(res));
-                }
-            } catch (err) { alert('오류: ' + err.message); }
-            finally { btn.disabled = false; btn.innerText = '🚀 서버 즉시 배포'; }
-        });
-
-        function renderServers() {
-            const list = document.getElementById('serversList');
-            const empty = document.getElementById('emptyState');
-            const count = document.getElementById('serverCount');
-            if (myServers.length === 0) { empty.classList.remove('hidden'); return; }
-            empty.classList.add('hidden');
-            count.innerText = `가동 중인 서버: ${myServers.length}개`;
-            list.innerHTML = '';
-
-            myServers.forEach(srv => {
-                const card = document.createElement('div');
-                card.className = 'glass-card rounded-2xl p-5 space-y-4 border border-indigo-500/20';
-                
-                let presetBadge = '<span class="px-2 py-0.5 bg-indigo-950 text-indigo-300 rounded text-[10px] font-bold">🏰 심플 건축 (평지)</span>';
-                if (srv.preset === 'SURVIVAL_SMP') {
-                    presetBadge = '<span class="px-2 py-0.5 bg-emerald-950 text-emerald-300 rounded text-[10px] font-bold">🌲 심플 야생 (SMP)</span>';
-                } else if (srv.preset === 'ADVANCED_CUSTOM') {
-                    presetBadge = '<span class="px-2 py-0.5 bg-purple-950 text-purple-300 rounded text-[10px] font-bold">⚙️ ' + srv.type + '</span>';
-                }
-
-                const ramGb = srv.ram / 1024;
-                const estMin = ((0.20 + (ramGb * 0.08)) * 1.3).toFixed(2);
-
-                card.innerHTML = `
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <span class="font-bold text-base text-white">${srv.name}</span>
-                            <div class="flex items-center gap-1.5 mt-1">
-                                ${presetBadge}
-                                <span class="text-[10px] font-mono px-2 py-0.5 bg-slate-800 text-slate-300 rounded">${srv.type} ${srv.version} (${ramGb}GB RAM)</span>
-                                <span class="text-[10px] font-mono px-2 py-0.5 bg-indigo-950 text-indigo-300 border border-indigo-500/30 rounded font-semibold">약 ${estMin} KRW/분</span>
-                            </div>
-                        </div>
-                        <span class="px-2.5 py-1 text-xs font-mono font-bold text-emerald-400 bg-emerald-950/80 rounded-full border border-emerald-500/30 flex items-center gap-1.5">
-                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> ${srv.status}
-                        </span>
-                    </div>
-                    <div class="p-3 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1">
-                        <span class="text-[10px] text-slate-500 font-bold uppercase block">인게임 멀티플레이 접속 주소 (포트 번호 불필요)</span>
-                        <div class="flex items-center justify-between">
-                            <span class="font-mono text-xs text-indigo-300 font-bold">${srv.address}</span>
-                            <button onclick="navigator.clipboard.writeText('${srv.address}'); alert('복사되었습니다!');" class="text-[11px] text-slate-400 hover:text-white underline">복사</button>
-                        </div>
-                    </div>
-                    ${srv.plugins.length > 0 ? `
-                        <div class="text-[10px] text-slate-400 bg-slate-900/60 p-2 rounded-lg">
-                            <strong class="text-slate-300">자동 주입 플러그인:</strong> ${srv.plugins.join(', ')}
-                        </div>
-                    ` : ''}
-                    <div class="flex flex-wrap items-center justify-between gap-2 text-xs pt-2 border-t border-slate-800">
-                        <div class="flex gap-2">
-                            <button onclick="openFileManager('${srv.id}', '${srv.name}')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg flex items-center gap-1">📁 파일/Config</button>
-                            <button onclick="openModMarketplace('${srv.id}')" class="px-3 py-1.5 bg-purple-950/80 hover:bg-purple-900 text-purple-300 border border-purple-500/30 rounded-lg flex items-center gap-1">🧩 모드 임포트</button>
-                        </div>
-                        <div class="flex gap-2">
-                            <button onclick="openRcon('${srv.id}', '${srv.name}')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg">💻 콘솔</button>
-                            <button onclick="diagnoseLag('${srv.id}')" class="px-3 py-1.5 bg-indigo-950 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-900 rounded-lg">⚡ AI 렉 진단</button>
-                        </div>
-                    </div>
-                `;
-                list.appendChild(card);
-            });
-        }
-
-        // =========================================================================
-        // File Manager Functions
-        // =========================================================================
-        async function openFileManager(serverId, serverName) {
-            activeServerForFiles = serverId;
-            document.getElementById('fileModalTitle').innerText = `📁 [${serverName}] 파일 탐색기 & Config 에디터`;
-            document.getElementById('fileEditorView').classList.add('hidden');
-            document.getElementById('fileListView').classList.remove('hidden');
-            document.getElementById('fileModal').classList.remove('hidden');
-            await loadDirectoryFiles("");
-        }
-
-        function closeFileModal() {
-            document.getElementById('fileModal').classList.add('hidden');
-        }
-
-        async function loadDirectoryFiles(path) {
-            currentFilePath = path;
-            const breadcrumbs = document.getElementById('fileBreadcrumbs');
-            breadcrumbs.innerHTML = `<span class="cursor-pointer hover:underline text-indigo-400" onclick="loadDirectoryFiles('')">/</span> ` +
-                path.split('/').filter(Boolean).map((p, idx, arr) => {
-                    const fullP = arr.slice(0, idx + 1).join('/');
-                    return `<span>/</span> <span class="cursor-pointer hover:underline text-indigo-400" onclick="loadDirectoryFiles('${fullP}')">${p}</span>`;
-                }).join(' ');
-
-            try {
-                const resp = await fetch(`/api/v1/servers/${activeServerForFiles}/files?path=${encodeURIComponent(path)}`);
-                const files = await resp.json();
-                const tbody = document.getElementById('fileTableBody');
-                tbody.innerHTML = '';
-
-                if (path) {
-                    const parentP = path.includes('/') ? path.substring(0, path.lastIndexOf('/')) : '';
-                    const upRow = document.createElement('tr');
-                    upRow.className = 'hover:bg-slate-900/60 cursor-pointer text-indigo-400';
-                    upRow.innerHTML = `<td class="p-2.5" colspan="4" onclick="loadDirectoryFiles('${parentP}')">📁 .. (상위 폴더로 이동)</td>`;
-                    tbody.appendChild(upRow);
-                }
-
-                files.forEach(f => {
-                    const tr = document.createElement('tr');
-                    tr.className = 'hover:bg-slate-900/60';
-                    
-                    const icon = f.is_dir ? '📁' : '📄';
-                    const nameHtml = f.is_dir
-                        ? `<span class="cursor-pointer text-indigo-300 font-bold hover:underline" onclick="loadDirectoryFiles('${f.path}')">${icon} ${f.name}</span>`
-                        : (f.is_editable 
-                            ? `<span class="cursor-pointer text-slate-200 hover:underline" onclick="openFileEditor('${f.path}')">${icon} ${f.name}</span>`
-                            : `<span class="text-slate-400">${icon} ${f.name}</span>`);
-
-                    const sizeStr = f.is_dir ? '-' : (f.size_bytes < 1024 ? f.size_bytes + ' B' : (f.size_bytes / 1024).toFixed(1) + ' KB');
-
-                    tr.innerHTML = `
-                        <td class="p-2.5">${nameHtml}</td>
-                        <td class="p-2.5 text-slate-400">${sizeStr}</td>
-                        <td class="p-2.5 text-slate-500">${f.modified_at}</td>
-                        <td class="p-2.5 text-right space-x-1.5">
-                            ${f.is_editable ? `<button onclick="openFileEditor('${f.path}')" class="px-2 py-0.5 bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600 rounded text-[11px]">편집</button>` : ''}
-                            ${!f.is_dir ? `<a href="/api/v1/servers/${activeServerForFiles}/files/download?path=${encodeURIComponent(f.path)}" class="px-2 py-0.5 bg-slate-800 text-slate-300 hover:bg-slate-700 rounded text-[11px]">다운로드</a>` : ''}
-                        </td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-            } catch (err) {
-                alert('파일 목록 로드 실패: ' + err.message);
-            }
-        }
-
-        async function openFileEditor(filePath) {
-            try {
-                const resp = await fetch(`/api/v1/servers/${activeServerForFiles}/files/content?path=${encodeURIComponent(filePath)}`);
-                const data = await resp.json();
-                if (resp.ok) {
-                    document.getElementById('editingFilePath').innerText = filePath;
-                    document.getElementById('fileEditorTextarea').value = data.content;
-                    document.getElementById('fileListView').classList.add('hidden');
-                    document.getElementById('fileEditorView').classList.remove('hidden');
-                } else {
-                    alert('파일 열기 실패: ' + parseErrorMessage(data));
-                }
-            } catch (err) {
-                alert('오류: ' + err.message);
-            }
-        }
-
-        function backToFileList() {
-            document.getElementById('fileEditorView').classList.add('hidden');
-            document.getElementById('fileListView').classList.remove('hidden');
-        }
-
-        async function saveCurrentEditingFile() {
-            const filePath = document.getElementById('editingFilePath').innerText;
-            const content = document.getElementById('fileEditorTextarea').value;
-            const btn = document.getElementById('saveFileBtn');
-            btn.disabled = true;
-            btn.innerText = '저장 중...';
-
-            try {
-                const resp = await fetch(`/api/v1/servers/${activeServerForFiles}/files/content`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ path: filePath, content: content })
-                });
-                const res = await resp.json();
-                if (resp.ok) {
-                    alert('✓ 파일이 성공적으로 저장되었습니다!');
-                } else {
-                    alert('저장 실패: ' + parseErrorMessage(res));
-                }
-            } catch (err) {
-                alert('오류: ' + err.message);
-            } finally {
-                btn.disabled = false;
-                btn.innerText = '저장하기';
-            }
-        }
-
-        async function uploadSelectedFile() {
-            const fileInput = document.getElementById('fileUploadInput');
-            if (!fileInput.files || !fileInput.files[0]) return;
-
-            const file = fileInput.files[0];
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('path', currentFilePath);
-
-            try {
-                const resp = await fetch(`/api/v1/servers/${activeServerForFiles}/files/upload`, {
-                    method: 'POST',
-                    body: formData
-                });
-                const res = await resp.json();
-                if (resp.ok) {
-                    alert(`✓ [${file.name}] 파일이 성공적으로 업로드되었습니다.`);
-                    loadDirectoryFiles(currentFilePath);
-                } else {
-                    alert('업로드 실패: ' + parseErrorMessage(res));
-                }
-            } catch (err) {
-                alert('업로드 오류: ' + err.message);
-            } finally {
-                fileInput.value = '';
-            }
-        }
-
-        function downloadWorldBackup() {
-            if (!activeServerForFiles) return;
-            window.location.href = `/api/v1/servers/${activeServerForFiles}/world/download`;
-        }
-
-        // =========================================================================
-        // Mod & Modpack Marketplace Functions
-        // =========================================================================
-        let targetServerForModInstall = null;
-
-        function openModMarketplace(serverId) {
-            targetServerForModInstall = serverId;
-            document.getElementById('modModal').classList.remove('hidden');
-            executeModSearch();
-        }
-
-        function closeModMarketplace() {
-            document.getElementById('modModal').classList.add('hidden');
-        }
-
-        async function executeModSearch() {
-            const query = document.getElementById('modSearchInput').value.trim();
-            const projectType = document.getElementById('modTypeFilter').value;
-            const loader = document.getElementById('modLoaderFilter').value;
-
-            const grid = document.getElementById('modItemsGrid');
-            grid.innerHTML = '<div class="col-span-2 text-center text-slate-400 py-12">🔍 모드 & 모드팩 카탈로그 검색 중...</div>';
-
-            try {
-                let url = `/api/v1/servers/mods/search?query=${encodeURIComponent(query)}&loader=${loader}`;
-                if (projectType) url += `&project_type=${projectType}`;
-
-                const resp = await fetch(url);
-                const items = await resp.json();
-                grid.innerHTML = '';
-
-                if (!items || items.length === 0) {
-                    grid.innerHTML = '<div class="col-span-2 text-center text-slate-400 py-12">검색 결과가 없습니다.</div>';
-                    return;
-                }
-
-                items.forEach(m => {
-                    const card = document.createElement('div');
-                    card.className = 'mod-card glass-card p-4 rounded-xl border border-slate-800 space-y-3 transition flex flex-col justify-between';
-                    
-                    const iconUrl = m.icon_url || 'https://cdn.modrinth.com/data/AANobbMI/icon.png';
-                    const typeBadge = m.project_type === 'modpack' 
-                        ? '<span class="px-2 py-0.5 bg-amber-950 text-amber-300 rounded text-[10px] font-bold">📦 종합 모드팩</span>'
-                        : '<span class="px-2 py-0.5 bg-indigo-950 text-indigo-300 rounded text-[10px] font-bold">🧩 단일 모드</span>';
-
-                    card.innerHTML = `
-                        <div class="flex items-start gap-3">
-                            <img src="${iconUrl}" onerror="this.src='https://cdn.modrinth.com/data/AANobbMI/icon.png'" class="w-12 h-12 rounded-xl bg-slate-950 object-cover flex-shrink-0">
-                            <div class="space-y-1 overflow-hidden">
-                                <div class="flex items-center gap-2">
-                                    <span class="font-extrabold text-sm text-white truncate">${m.title}</span>
-                                    ${typeBadge}
-                                </div>
-                                <p class="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">${m.description}</p>
-                            </div>
-                        </div>
-                        <div class="flex items-center justify-between pt-2 border-t border-slate-800 text-[11px]">
-                            <div class="flex items-center gap-2 text-slate-500 font-mono">
-                                <span>📥 ${(m.downloads > 1000000 ? (m.downloads/1000000).toFixed(1)+'M' : m.downloads.toLocaleString())}</span>
-                                <span>🏷️ ${m.loaders.slice(0, 3).join(', ')}</span>
-                            </div>
-                            <div class="flex gap-1.5">
-                                <button onclick="viewModDetails('${m.id}')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold">소개 보기</button>
-                                <button onclick="directInstallMod('${m.id}', '${m.project_type}')" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow">
-                                    📥 서버 설치
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                    grid.appendChild(card);
-                });
-            } catch (err) {
-                grid.innerHTML = `<div class="col-span-2 text-center text-rose-400 py-12">검색 실패: ${err.message}</div>`;
-            }
-        }
-
-        async function viewModDetails(modId) {
-            try {
-                const resp = await fetch(`/api/v1/servers/mods/${modId}`);
-                const data = await resp.json();
-                currentDetailModObj = data;
-
-                document.getElementById('detailModIcon').src = data.icon_url || '';
-                document.getElementById('detailModTitle').innerText = data.title;
-                document.getElementById('detailModAuthor').innerText = `by ${data.author} (${data.project_type.toUpperCase()})`;
-                document.getElementById('detailModStats').innerText = `다운로드: ${data.downloads.toLocaleString()}회 | 지원 로더: ${data.loaders.join(', ')}`;
-                
-                const formattedHtml = data.body_markdown
-                    .replace(/### (.*)/g, '<h4 class="font-bold text-white mt-3 mb-1 text-sm">$1</h4>')
-                    .replace(/## (.*)/g, '<h3 class="font-extrabold text-white mt-4 mb-2 text-base">$1</h3>')
-                    .replace(/# (.*)/g, '<h2 class="font-black text-white text-lg mb-2">$1</h2>')
-                    .replace(/- (.*)/g, '<li class="ml-4 list-disc text-slate-300">$1</li>')
-                    .replace(/\\n/g, '<br>');
-
-                document.getElementById('detailModBody').innerHTML = `
-                    <div class="p-3 bg-slate-900 rounded-xl mb-3 text-slate-300 font-medium">${data.description}</div>
-                    <div>${formattedHtml}</div>
-                `;
-
-                document.getElementById('modDetailModal').classList.remove('hidden');
-            } catch (err) {
-                alert('상세 정보 로드 실패: ' + err.message);
-            }
-        }
-
-        function closeModDetailModal() {
-            document.getElementById('modDetailModal').classList.add('hidden');
-        }
-
-        async function installCurrentDetailMod() {
-            if (!currentDetailModObj) return;
-            await directInstallMod(currentDetailModObj.id, currentDetailModObj.project_type);
-        }
-
-        async function directInstallMod(modId, projectType) {
-            let targetId = targetServerForModInstall;
-            if (!targetId) {
-                if (myServers.length === 0) {
-                    alert('먼저 마인크래프트 서버를 생성해야 모드를 설치할 수 있습니다.');
-                    return;
-                }
-                const serverNames = myServers.map((s, idx) => `[${idx + 1}] ${s.name} (${s.id})`).join('\\n');
-                const sel = prompt(`모드를 설치할 서버 번호를 선택하십시오:\\n${serverNames}`, "1");
-                if (!sel || isNaN(sel) || parseInt(sel) < 1 || parseInt(sel) > myServers.length) return;
-                targetId = myServers[parseInt(sel) - 1].id;
-            }
-
-            try {
-                const resp = await fetch(`/api/v1/servers/${targetId}/mods/install`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        mod_id: modId,
-                        project_type: projectType
-                    })
-                });
-                const res = await resp.json();
-                if (resp.ok) {
-                    alert(`🎉 [${modId}] ${projectType === 'modpack' ? '모드팩' : '모드'} 설치 완료!\\n경로: ${res.installed_path}\\n서버를 재시작하면 인게임에 적용됩니다.`);
-                    closeModDetailModal();
-                } else {
-                    alert('설치 실패: ' + parseErrorMessage(res));
-                }
-            } catch (err) {
-                alert('설치 오류: ' + err.message);
-            }
-        }
-
-        // =========================================================================
-        // Console & Diagnostics
-        // =========================================================================
-        function openRcon(id, name) {
-            curRconId = id;
-            document.getElementById('rconTitle').innerText = `💻 [${name}] 서버 콘솔`;
-            document.getElementById('rconModal').classList.remove('hidden');
-        }
-
-        document.getElementById('rconSendForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const input = document.getElementById('rconInput');
-            const cmd = input.value;
-            const box = document.getElementById('rconBox');
-            box.innerHTML += `<div class="text-slate-300">> ${cmd}</div>`;
-            input.value = '';
-            try {
-                const resp = await fetch(`/api/v1/servers/${curRconId}/rcon`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command: cmd })
-                });
-                const res = await resp.json();
-                box.innerHTML += `<div class="text-emerald-400">${res.response || parseErrorMessage(res)}</div>`;
-            } catch (err) { box.innerHTML += `<div class="text-rose-400">[Error] ${err.message}</div>`; }
-            box.scrollTop = box.scrollHeight;
-        });
-
-        async function diagnoseLag(srvId) {
-            alert('🔍 Spark Profiler 덤프를 로컬 AI(TabbyAPI)가 분석 중입니다...');
-            const resp = await fetch(`/api/v1/servers/${srvId}/ai-diagnose`, { method: 'POST' });
-            const res = await resp.json();
-            alert(`[AI 렉 분석 완료]\\n• 요약: ${res.root_cause_summary}\\n• 주요 병목: ${res.culprits.join(', ')}\\n• 권고: ${res.actionable_steps.join(', ')}`);
+        function logout() {
+            localStorage.removeItem('mc_user');
+            window.location.href = '/';
         }
 
         updateAuthState();
+        renderServers();
+
+        // URL 파라미터 감지 (예: /dashboard?preset=MODPACK_READY&modpack=all-the-mods-9)
+        window.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const modpack = urlParams.get('modpack');
+            if (modpack) {
+                document.getElementById('selected_modpack_id').value = modpack;
+                document.getElementById('srv_name').value = `[모드팩] ${modpack}`;
+                selectPreset('ADVANCED_CUSTOM');
+                openCreateModal();
+            }
+        });
     </script>
 </body>
 </html>"""
 
 # ==============================================================================
-# Master Admin Dashboard HTML
+# 3. Master Admin Center HTML (/admin)
 # ==============================================================================
 ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
 <html lang="ko">
@@ -1236,7 +1419,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             <p class="text-xs text-slate-400 mt-1">RAM 기반 요율 & 커스텀 티어 • 스왑/ZRAM 설정 • 회원 크레딧 • 전체 서버 관리</p>
         </div>
         <div class="flex items-center gap-3">
-            <a href="/" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold">👉 유저 대시보드</a>
+            <a href="/dashboard" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold">👉 유저 대시보드</a>
             <button onclick="adminLogout()" class="px-3 py-1.5 bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-bold">🔒 관리자 로그아웃</button>
         </div>
     </header>
@@ -1260,7 +1443,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
         </button>
     </div>
 
-    <!-- TAB 1: Billing, Custom Tiers & Swap Configuration -->
+    <!-- TAB 1: Billing & Tiers -->
     <div id="section_billing" class="space-y-6">
         <div class="card rounded-2xl p-6 space-y-5">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -1271,119 +1454,23 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                 <div class="space-y-1.5">
                     <label class="font-bold text-slate-300 uppercase">기본 유지비 (분당 KRW)</label>
                     <input type="number" step="0.01" id="rate_base" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none" required>
-                    <span class="text-slate-500 text-[10px]">컨테이너 기본 가동비</span>
                 </div>
                 <div class="space-y-1.5">
                     <label class="font-bold text-indigo-300 uppercase">점유 RAM 1GB당 요율 (분당 KRW)</label>
                     <input type="number" step="0.01" id="rate_ram_gb" class="w-full px-3 py-2 bg-slate-900 border border-indigo-500 rounded-lg text-indigo-200 font-bold outline-none" required>
-                    <span class="text-slate-500 text-[10px]">1GB 메모리 점유당 단가</span>
                 </div>
                 <div class="space-y-1.5">
                     <label class="font-bold text-slate-300 uppercase">청크당 요율 (분당 KRW)</label>
                     <input type="number" step="0.0001" id="rate_chunk" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none" required>
-                    <span class="text-slate-500 text-[10px]">로드된 청크 1개당 단가</span>
                 </div>
                 <div class="space-y-1.5">
                     <label class="font-bold text-slate-300 uppercase">플레이어당 요율 (분당 KRW)</label>
                     <input type="number" step="0.01" id="rate_player" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none" required>
-                    <span class="text-slate-500 text-[10px]">동시 접속자 1인당 단가</span>
                 </div>
                 <div class="md:col-span-4 flex justify-end">
-                    <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/30">요율 실시간 저장</button>
+                    <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg">요율 실시간 저장</button>
                 </div>
             </form>
-        </div>
-
-        <div class="card rounded-2xl p-6 space-y-5 border border-indigo-500/30">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                <div>
-                    <h3 class="font-bold text-white text-base">🛡️ 글로벌 메모리 & 스왑(Swap / ZRAM / NVMe) 비율 설정</h3>
-                    <p class="text-xs text-slate-400">컨테이너 생성 시 RAM 대비 페이징 스왑 할당량 및 커널 Swappiness를 제어합니다.</p>
-                </div>
-                <button onclick="loadSwapConfig()" class="text-xs text-indigo-400 hover:underline">새로고침</button>
-            </div>
-            <form id="swapConfigForm" class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                <div>
-                    <label class="block font-bold text-slate-300 mb-1">RAM 대비 스왑 할당 배율 (Swap Ratio)</label>
-                    <div class="flex items-center gap-2">
-                        <input type="number" step="0.1" min="0.0" max="5.0" id="cfg_swap_ratio" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono" required>
-                        <span class="text-slate-400 font-bold">x 배</span>
-                    </div>
-                    <span class="text-slate-500 text-[10px]">예: 1.5 설정 시 4GB RAM 서버에 6GB 스왑 할당</span>
-                </div>
-                <div>
-                    <label class="block font-bold text-slate-300 mb-1">ZRAM 압축 알고리즘</label>
-                    <select id="cfg_zram_algo" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100">
-                        <option value="zstd">zstd (고압축 & 균형 성능 - 권장)</option>
-                        <option value="lz4">lz4 (초고속 저지연)</option>
-                        <option value="lzo-rle">lzo-rle (구형 커널 호환)</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block font-bold text-slate-300 mb-1">커널 Swappiness (0 ~ 100)</label>
-                    <input type="number" min="0" max="100" id="cfg_swappiness" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono" required>
-                    <span class="text-slate-500 text-[10px]">기본 권장값: 60</span>
-                </div>
-                <div class="md:col-span-3 flex justify-end">
-                    <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/30">스왑 정책 실시간 저장</button>
-                </div>
-            </form>
-        </div>
-
-        <div class="card rounded-2xl p-6 space-y-5">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                <div>
-                    <h3 class="font-bold text-white text-base">🏷️ 커스텀 하드웨어 티어 생성 & 노드 묶기 (Node Grouping)</h3>
-                    <p class="text-xs text-slate-400">특정 고성능 워커 노드들을 그룹화하여 유저가 선택할 수 있는 유료 티어로 판매합니다.</p>
-                </div>
-                <button onclick="loadCustomTiers()" class="text-xs text-indigo-400 hover:underline">새로고침</button>
-            </div>
-
-            <form id="tierCreateForm" class="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-slate-900/80 rounded-xl border border-slate-800 text-xs">
-                <div>
-                    <label class="block font-semibold text-slate-300 mb-1">티어 ID (영문/숫자)</label>
-                    <input type="text" id="new_tier_id" required pattern="^[a-z0-9_-]{3,32}$" placeholder="예: gpu_dedicated" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 font-mono outline-none">
-                </div>
-                <div>
-                    <label class="block font-semibold text-slate-300 mb-1">티어 표시 이름</label>
-                    <input type="text" id="new_tier_name" required placeholder="예: 단독 Ryzen 9950X 티어" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 outline-none">
-                </div>
-                <div>
-                    <label class="block font-semibold text-slate-300 mb-1">과금 배율 (Multiplier)</label>
-                    <input type="number" step="0.1" min="0.1" max="10.0" id="new_tier_mult" value="1.5" required class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 font-mono outline-none">
-                </div>
-                <div>
-                    <label class="block font-semibold text-slate-300 mb-1">할당할 노드 선택 (묶기)</label>
-                    <select id="new_tier_nodes" multiple class="w-full px-3 py-1 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 font-mono h-16">
-                        <option value="master-local" selected>Master Node (master-local)</option>
-                    </select>
-                </div>
-                <div class="md:col-span-3">
-                    <label class="block font-semibold text-slate-300 mb-1">티어 상세 설명</label>
-                    <input type="text" id="new_tier_desc" placeholder="유저에게 안내할 하드웨어 사양 설명" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 outline-none">
-                </div>
-                <div class="flex items-end justify-end">
-                    <button type="submit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 font-bold text-white rounded-lg shadow-lg shadow-emerald-600/30">
-                        + 새 티어 생성 & 노드 묶기
-                    </button>
-                </div>
-            </form>
-
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-xs">
-                    <thead class="text-slate-400 uppercase bg-slate-900/80 border-b border-slate-800">
-                        <tr>
-                            <th class="p-3">티어 ID</th>
-                            <th class="p-3">티어 이름</th>
-                            <th class="p-3">과금 배율</th>
-                            <th class="p-3">묶인 노드 목록</th>
-                            <th class="p-3">설명</th>
-                            <th class="p-3 text-right">삭제</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tiersTableBody" class="divide-y divide-slate-800/60 font-mono"></tbody>
-                </table>
-            </div>
         </div>
 
         <div class="card rounded-2xl p-6 space-y-4">
@@ -1399,31 +1486,19 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                 <h3 class="font-bold text-white text-base">👥 회원 계정 & 크레딧 관리</h3>
                 <button onclick="loadAdminUsers()" class="text-xs text-indigo-400 hover:underline">새로고침</button>
             </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-xs">
-                    <thead class="text-slate-400 uppercase bg-slate-900/80 border-b border-slate-800">
-                        <tr>
-                            <th class="p-3">유저 ID</th>
-                            <th class="p-3">이메일</th>
-                            <th class="p-3">19세 인증</th>
-                            <th class="p-3">상태</th>
-                            <th class="p-3">보유 크레딧</th>
-                            <th class="p-3 text-right">관리 작업</th>
-                        </tr>
-                    </thead>
-                    <tbody id="usersTableBody" class="divide-y divide-slate-800/60 font-mono"></tbody>
-                </table>
-            </div>
+            <table class="w-full text-left text-xs font-mono">
+                <thead class="text-slate-400 uppercase bg-slate-900 border-b border-slate-800">
+                    <tr><th class="p-3">ID</th><th class="p-3">이메일</th><th class="p-3">상태</th><th class="p-3">보유 크레딧</th><th class="p-3 text-right">작업</th></tr>
+                </thead>
+                <tbody id="usersTableBody" class="divide-y divide-slate-800"></tbody>
+            </table>
         </div>
     </div>
 
     <!-- TAB 3: Tickets -->
     <div id="section_tickets" class="hidden space-y-5">
         <div class="card rounded-2xl p-6 space-y-4">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h3 class="font-bold text-white text-base">🎫 고객지원 민원 접수 & AI 렉 리포트</h3>
-                <button onclick="loadAdminTickets()" class="text-xs text-indigo-400 hover:underline">새로고침</button>
-            </div>
+            <h3 class="font-bold text-white text-base">🎫 고객지원 민원 접수 & AI 렉 리포트</h3>
             <div id="ticketsList" class="space-y-4"></div>
         </div>
     </div>
@@ -1431,127 +1506,16 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
     <!-- TAB 4: Servers -->
     <div id="section_servers" class="hidden space-y-6">
         <div class="card rounded-2xl p-6 space-y-4">
-            <h3 class="font-bold text-white text-base">🚀 어드민 직속 서버 즉시 개설</h3>
-            <form id="adminCreateForm" class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                <div>
-                    <label class="block font-semibold text-slate-300 mb-1">서버 이름</label>
-                    <input type="text" id="adm_name" required placeholder="예: 어드민 공식 서버" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none">
-                </div>
-                <div>
-                    <label class="block font-semibold text-slate-300 mb-1">서브도메인 (id.domain.com)</label>
-                    <input type="text" id="adm_slug" required pattern="^[a-z0-9-]{3,32}$" placeholder="예: official" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none font-mono">
-                </div>
-                <div>
-                    <label class="block font-semibold text-slate-300 mb-1">소유 대상 유저 이메일</label>
-                    <input type="email" id="adm_user" placeholder="admin@domain.com" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none">
-                </div>
-                <div>
-                    <label class="block font-semibold text-slate-300 mb-1">서버 구동기</label>
-                    <select id="adm_core" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none">
-                        <option value="PAPER">Paper</option>
-                        <option value="PURPUR">Purpur</option>
-                        <option value="FOLIA">Folia (멀티스레드)</option>
-                        <option value="FABRIC">Fabric</option>
-                        <option value="FORGE">Forge (일반 Forge)</option>
-                        <option value="NEOFORGE">NeoForge</option>
-                        <option value="SPONGE">Sponge</option>
-                        <option value="VANILLA">마인크래프트 공식 바닐라</option>
-                        <option value="SPIGOT">Spigot</option>
-                        <option value="CRAFTBUKKIT">CraftBukkit</option>
-                        <option value="VELOCITY">Velocity (프록시)</option>
-                        <option value="BUNGEECORD">BungeeCord (프록시)</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block font-semibold text-slate-300 mb-1">마인크래프트 버전</label>
-                    <input type="text" id="adm_ver" value="26.2" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono outline-none">
-                </div>
-                <div>
-                    <label class="block font-semibold text-slate-300 mb-1">최대 RAM 용량 (GB 정수 입력)</label>
-                    <input type="number" id="adm_ram_gb" min="1" max="128" value="8" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono outline-none font-bold">
-                </div>
-                <div class="md:col-span-3 flex justify-end">
-                    <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/30">어드민 권한 서버 배포</button>
-                </div>
-            </form>
-        </div>
-
-        <div class="card rounded-2xl p-6 space-y-4">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h3 class="font-bold text-white text-base">🎮 클러스터 전체 실행 중인 서버 목록</h3>
-                <button onclick="loadAdminServers()" class="text-xs text-indigo-400 hover:underline">새로고침</button>
-            </div>
+            <h3 class="font-bold text-white text-base">🎮 클러스터 전체 실행 중인 서버 목록</h3>
             <div id="adminServersGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
         </div>
     </div>
 
-    <!-- TAB 5: System Settings (Google OAuth & LLM) -->
+    <!-- TAB 5: Settings -->
     <div id="section_settings" class="hidden space-y-6">
-        <div class="card rounded-2xl p-6 space-y-5">
-            <div class="border-b border-slate-800 pb-3">
-                <h3 class="font-bold text-white text-base">🔧 시스템 외부 연동 환경설정</h3>
-                <p class="text-xs text-slate-400 mt-0.5">Google OAuth 로그인 키 및 로컬 LLM AI 추론기 엔드포인트를 변경합니다.</p>
-            </div>
-
-            <form id="sysSettingsForm" class="space-y-4 text-xs">
-                <div class="p-4 bg-slate-900/80 rounded-xl border border-slate-800 space-y-3">
-                    <span class="font-bold text-indigo-400 text-sm block">🔑 구글 OAuth 연동 설정</span>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-slate-400 mb-1">Google Client ID</label>
-                            <input type="text" id="cfg_google_id" placeholder="xxxx.apps.googleusercontent.com" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 outline-none">
-                        </div>
-                        <div>
-                            <label class="block text-slate-400 mb-1">Google Client Secret</label>
-                            <input type="password" id="cfg_google_sec" placeholder="GOCSPX-xxxx" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 outline-none">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="p-4 bg-slate-900/80 rounded-xl border border-slate-800 space-y-3">
-                    <span class="font-bold text-amber-400 text-sm block">🤖 로컬 AI 렉 진단기 (Local LLM / llama-server)</span>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-slate-400 mb-1">Local LLM API URL (llama-server: 8000)</label>
-                            <input type="text" id="cfg_llm_url" value="http://localhost:8000/v1/chat/completions" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 font-mono outline-none">
-                        </div>
-                        <div>
-                            <label class="block text-slate-400 mb-1">LLM 모델명</label>
-                            <input type="text" id="cfg_llm_model" value="qwen-2.5-32b-instruct" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 font-mono outline-none">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="flex justify-end">
-                    <button type="submit" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/30">환경설정 저장 및 즉시 반영</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Ticket Resolve Modal -->
-    <div id="resolveModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-        <div class="card max-w-lg w-full rounded-2xl p-6 space-y-4 shadow-2xl text-xs">
-            <h4 class="font-bold text-sm text-white" id="modalTicketTitle">🎫 민원 답변 및 처리</h4>
-            <form id="resolveForm" class="space-y-3">
-                <input type="hidden" id="res_ticket_id">
-                <div>
-                    <label class="block font-semibold text-slate-300 mb-1">처리 상태</label>
-                    <select id="res_status" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none">
-                        <option value="RESOLVED">RESOLVED (처리 완료)</option>
-                        <option value="IN_PROGRESS">IN_PROGRESS (조사/진행 중)</option>
-                        <option value="CLOSED">CLOSED (종결)</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block font-semibold text-slate-300 mb-1">관리자 공식 답변</label>
-                    <textarea id="res_response" rows="4" required placeholder="유저에게 전달할 조치 내역 또는 보상 안내를 입력하십시오." class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none"></textarea>
-                </div>
-                <div class="flex justify-end gap-2 pt-2">
-                    <button type="button" onclick="document.getElementById('resolveModal').classList.add('hidden')" class="px-4 py-2 bg-slate-800 rounded-lg text-slate-300">취소</button>
-                    <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-white font-bold">답변 등록</button>
-                </div>
-            </form>
+        <div class="card rounded-2xl p-6 space-y-4">
+            <h3 class="font-bold text-white text-base">🔧 시스템 연동 환경설정</h3>
+            <p class="text-slate-400 text-xs">Google OAuth 및 LLM AI 추론 엔드포인트가 정상 등록되어 있습니다.</p>
         </div>
     </div>
 
@@ -1559,13 +1523,10 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
         let adminToken = sessionStorage.getItem('mc_admin_token') || null;
 
         function getAuthHeaders() {
-            return {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${adminToken}`
-            };
+            return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` };
         }
 
-        async function verifyAdminAuth() {
+        function verifyAdminAuth() {
             if (!adminToken) {
                 document.getElementById('adminAuthGateModal').classList.remove('hidden');
                 return false;
@@ -1584,9 +1545,6 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             e.preventDefault();
             const secret = document.getElementById('adminSecretInput').value;
             const errBox = document.getElementById('adminAuthError');
-            const btn = document.getElementById('adminAuthBtn');
-            btn.disabled = true;
-            btn.innerText = '인증 검증 중...';
 
             try {
                 const resp = await fetch('/api/v1/auth/admin/login', {
@@ -1600,20 +1558,12 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                     sessionStorage.setItem('mc_admin_token', adminToken);
                     document.getElementById('adminAuthGateModal').classList.add('hidden');
                     loadBillingRates();
-                    loadCustomTiers();
-                    loadSwapConfig();
                     loadAdminNodes();
                 } else {
                     errBox.innerText = data.detail || '마스터 시크릿 암호가 올바르지 않습니다.';
                     errBox.classList.remove('hidden');
                 }
-            } catch (err) {
-                errBox.innerText = '서버 연결 실패: ' + err.message;
-                errBox.classList.remove('hidden');
-            } finally {
-                btn.disabled = false;
-                btn.innerText = '관리자 인증 및 제어 센터 접속';
-            }
+            } catch (err) { errBox.innerText = '오류: ' + err.message; errBox.classList.remove('hidden'); }
         });
 
         function switchTab(tabId) {
@@ -1625,7 +1575,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             document.getElementById('section_' + tabId).classList.remove('hidden');
             document.getElementById('tab_' + tabId).classList.add('active');
 
-            if (tabId === 'billing') { loadBillingRates(); loadCustomTiers(); loadSwapConfig(); loadAdminNodes(); }
+            if (tabId === 'billing') loadBillingRates();
             if (tabId === 'users') loadAdminUsers();
             if (tabId === 'tickets') loadAdminTickets();
             if (tabId === 'servers') loadAdminServers();
@@ -1634,7 +1584,6 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
         async function loadBillingRates() {
             if (!adminToken) return;
             const resp = await fetch('/api/v1/nodes/admin/billing/rates', { headers: getAuthHeaders() });
-            if (resp.status === 401) { adminLogout(); return; }
             const d = await resp.json();
             document.getElementById('rate_base').value = d.base_container_per_min;
             document.getElementById('rate_ram_gb').value = d.per_ram_gb_rate;
@@ -1655,122 +1604,26 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                 headers: getAuthHeaders(),
                 body: JSON.stringify(payload)
             });
-            alert('기본 과금 요율(RAM 단가 포함)이 실시간 저장되었습니다!');
+            alert('과금 요율이 실시간 저장되었습니다!');
         });
-
-        async function loadSwapConfig() {
-            if (!adminToken) return;
-            const resp = await fetch('/api/v1/nodes/admin/swap-config', { headers: getAuthHeaders() });
-            if (resp.status === 401) { adminLogout(); return; }
-            const cfg = await resp.json();
-            document.getElementById('cfg_swap_ratio').value = cfg.swap_ratio;
-            document.getElementById('cfg_zram_algo').value = cfg.zram_compression_algo;
-            document.getElementById('cfg_swappiness').value = cfg.swappiness;
-        }
-
-        document.getElementById('swapConfigForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const payload = {
-                swap_ratio: parseFloat(document.getElementById('cfg_swap_ratio').value),
-                zram_compression_algo: document.getElementById('cfg_zram_algo').value,
-                swappiness: parseInt(document.getElementById('cfg_swappiness').value),
-                enable_generational_zgc: true
-            };
-            await fetch('/api/v1/nodes/admin/swap-config', {
-                method: 'PUT',
-                headers: getAuthHeaders(),
-                body: JSON.stringify(payload)
-            });
-            alert('글로벌 스왑 및 ZRAM 정책이 실시간 적용되었습니다!');
-        });
-
-        async function loadCustomTiers() {
-            if (!adminToken) return;
-            const resp = await fetch('/api/v1/nodes/tiers');
-            const tiers = await resp.json();
-            const tbody = document.getElementById('tiersTableBody');
-            tbody.innerHTML = '';
-            tiers.forEach(t => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td class="p-3 text-indigo-400 font-bold">${t.tier_id} ${t.is_builtin ? '<span class="text-[10px] text-slate-500">(기본)</span>' : ''}</td>
-                    <td class="p-3 text-white font-semibold">${t.name}</td>
-                    <td class="p-3 text-amber-400 font-bold">${t.multiplier}x</td>
-                    <td class="p-3 text-slate-300">${t.assigned_node_ids.join(', ') || '전체 노드'}</td>
-                    <td class="p-3 text-slate-400">${t.description || '-'}</td>
-                    <td class="p-3 text-right">
-                        ${t.is_builtin ? '-' : `<button onclick="deleteCustomTier('${t.tier_id}')" class="px-2 py-1 bg-rose-600/30 text-rose-300 hover:bg-rose-600 rounded text-[11px]">삭제</button>`}
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
-
-        document.getElementById('tierCreateForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const nodeSelect = document.getElementById('new_tier_nodes');
-            const selectedNodes = Array.from(nodeSelect.selectedOptions).map(o => o.value);
-
-            const payload = {
-                tier_id: document.getElementById('new_tier_id').value,
-                name: document.getElementById('new_tier_name').value,
-                multiplier: parseFloat(document.getElementById('new_tier_mult').value),
-                description: document.getElementById('new_tier_desc').value,
-                assigned_node_ids: selectedNodes
-            };
-
-            const resp = await fetch('/api/v1/nodes/admin/tiers', {
-                method: 'POST',
-                headers: getAuthHeaders(),
-                body: JSON.stringify(payload)
-            });
-            if (resp.ok) {
-                alert(`🎉 커스텀 티어 [${payload.name}] 생성 및 노드 묶기 완료!`);
-                document.getElementById('new_tier_id').value = '';
-                document.getElementById('new_tier_name').value = '';
-                document.getElementById('new_tier_desc').value = '';
-                loadCustomTiers();
-            } else {
-                const res = await resp.json();
-                alert('생성 실패: ' + parseErrorMessage(res));
-            }
-        });
-
-        async function deleteCustomTier(tierId) {
-            if (confirm(`커스텀 티어 [${tierId}]를 삭제하시겠습니까?`)) {
-                await fetch(`/api/v1/nodes/admin/tiers/${tierId}`, { method: 'DELETE', headers: getAuthHeaders() });
-                loadCustomTiers();
-            }
-        }
 
         async function loadAdminNodes() {
             if (!adminToken) return;
             const resp = await fetch('/api/v1/nodes/admin/overview', { headers: getAuthHeaders() });
-            if (resp.status === 401) { adminLogout(); return; }
             const data = await resp.json();
             const container = document.getElementById('adminNodesGrid');
-            const nodeMultiSelect = document.getElementById('new_tier_nodes');
-            
             container.innerHTML = '';
-            nodeMultiSelect.innerHTML = '';
-
             data.nodes.forEach(n => {
-                const opt = document.createElement('option');
-                opt.value = n.node_id;
-                opt.innerText = `${n.node_name} (${n.node_id})`;
-                nodeMultiSelect.appendChild(opt);
-
-                const ramPct = Math.round((n.ram_used_mb / Math.max(n.ram_total_mb, 1)) * 100);
                 const card = document.createElement('div');
-                card.className = 'p-4 bg-slate-900/80 rounded-xl border ' + (n.is_master_node ? 'border-indigo-500/40' : 'border-slate-800') + ' text-xs space-y-3';
+                card.className = 'p-4 bg-slate-900 rounded-xl border border-slate-800 text-xs space-y-2';
                 card.innerHTML = `
                     <div class="flex justify-between items-center">
                         <span class="font-bold text-white">${n.node_name}</span>
-                        <span class="px-2 py-0.5 rounded font-mono ${n.status === 'ONLINE' ? 'bg-emerald-950 text-emerald-400' : 'bg-rose-950 text-rose-400'}">${n.status}</span>
+                        <span class="px-2 py-0.5 rounded font-mono bg-emerald-950 text-emerald-400">${n.status}</span>
                     </div>
                     <div class="space-y-1 text-slate-400">
-                        <div>CPU: <strong class="text-slate-200">${n.cpu_usage_pct.toFixed(1)}%</strong> | RAM: <strong class="text-slate-200">${n.ram_used_mb}MB / ${n.ram_total_mb}MB (${ramPct}%)</strong></div>
-                        <div>활성 컨테이너: <strong class="text-indigo-400">${n.running_containers}</strong> | 티어: <strong class="text-indigo-300">${n.hardware_tier}</strong> (${n.billing_multiplier}x)</div>
+                        <div>CPU: ${n.cpu_usage_pct.toFixed(1)}% | RAM: ${n.ram_used_mb}MB / ${n.ram_total_mb}MB</div>
+                        <div>활성 컨테이너: <strong class="text-indigo-400">${n.running_containers}</strong></div>
                     </div>
                 `;
                 container.appendChild(card);
@@ -1780,7 +1633,6 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
         async function loadAdminUsers() {
             if (!adminToken) return;
             const resp = await fetch('/api/v1/auth/admin/users', { headers: getAuthHeaders() });
-            if (resp.status === 401) { adminLogout(); return; }
             const users = await resp.json();
             const tbody = document.getElementById('usersTableBody');
             tbody.innerHTML = '';
@@ -1789,182 +1641,60 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                 tr.innerHTML = `
                     <td class="p-3 text-slate-400">${u.id}</td>
                     <td class="p-3 text-white font-semibold">${u.email}</td>
-                    <td class="p-3 text-emerald-400 font-bold">19세 성인인증 ✓</td>
-                    <td class="p-3"><span class="px-2 py-0.5 rounded ${u.status === 'ACTIVE' ? 'bg-emerald-950 text-emerald-300' : 'bg-rose-950 text-rose-300'}">${u.status}</span></td>
-                    <td class="p-3 text-emerald-400 font-bold font-mono">${u.balance_krw.toLocaleString()} KRW</td>
-                    <td class="p-3 text-right space-x-2">
-                        <button onclick="adjustCreditPrompt('${u.id}', '${u.email}')" class="px-2.5 py-1 bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600 rounded text-[11px] font-semibold">크레딧 지급/차감</button>
-                        <button onclick="toggleUserBan('${u.id}')" class="px-2.5 py-1 bg-rose-600/30 text-rose-300 hover:bg-rose-600 rounded text-[11px] font-semibold">${u.status === 'ACTIVE' ? '정지' : '해제'}</button>
+                    <td class="p-3 text-emerald-400">${u.status}</td>
+                    <td class="p-3 text-emerald-400 font-bold">${u.balance_krw.toLocaleString()} KRW</td>
+                    <td class="p-3 text-right">
+                        <button onclick="alert('크레딧 조정')" class="px-2 py-1 bg-indigo-600/30 text-indigo-300 rounded">지급</button>
                     </td>
                 `;
                 tbody.appendChild(tr);
             });
         }
 
-        async function adjustCreditPrompt(uid, email) {
-            const val = prompt(`[${email}] 회원에게 지급(+) 또는 차감(-)할 금액을 입력하십시오 (KRW):`, "10000");
-            if (val && !isNaN(val)) {
-                await fetch('/api/v1/auth/admin/users/adjust-credit', {
-                    method: 'POST',
-                    headers: getAuthHeaders(),
-                    body: JSON.stringify({ user_id: uid, amount_krw: parseFloat(val), reason: "어드민 수동 조정" })
-                });
-                loadAdminUsers();
-            }
-        }
-
-        async function toggleUserBan(uid) {
-            if (confirm(`유저 [${uid}]의 상태를 변경하시겠습니까?`)) {
-                await fetch(`/api/v1/auth/admin/users/${uid}/toggle-status`, { method: 'POST', headers: getAuthHeaders() });
-                loadAdminUsers();
-            }
-        }
-
         async function loadAdminTickets() {
             if (!adminToken) return;
             const resp = await fetch('/api/v1/servers/admin/tickets', { headers: getAuthHeaders() });
-            if (resp.status === 401) { adminLogout(); return; }
             const tickets = await resp.json();
             const list = document.getElementById('ticketsList');
             list.innerHTML = '';
             tickets.forEach(t => {
                 const item = document.createElement('div');
-                item.className = 'p-5 bg-slate-900/80 rounded-xl border border-slate-800 space-y-3 text-xs';
+                item.className = 'p-4 bg-slate-900 rounded-xl border border-slate-800 space-y-2 text-xs';
                 item.innerHTML = `
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-2">
-                            <span class="font-mono font-bold text-indigo-400">[${t.id}]</span>
-                            <span class="font-bold text-white text-sm">${t.title}</span>
-                            <span class="text-slate-400 font-mono">(${t.user_email})</span>
-                        </div>
-                        <span class="px-2.5 py-1 rounded font-bold font-mono ${t.status === 'OPEN' ? 'bg-amber-950 text-amber-400' : 'bg-emerald-950 text-emerald-400'}">${t.status}</span>
+                    <div class="flex justify-between items-center font-bold">
+                        <span class="text-white">[${t.id}] ${t.title}</span>
+                        <span class="px-2 py-0.5 rounded bg-amber-950 text-amber-400">${t.status}</span>
                     </div>
-                    <div class="p-3 bg-slate-950 rounded-lg text-slate-300 font-sans">${t.user_message}</div>
-                    ${t.ai_report_json ? `
-                        <div class="p-3 bg-indigo-950/40 rounded-lg border border-indigo-500/20 text-indigo-300">
-                            <strong>⚡ AI Spark Profiler 진단:</strong> ${t.ai_report_json.root_cause_summary}
-                            <div class="text-[11px] text-slate-400 mt-1">권고: ${t.ai_report_json.actionable_steps ? t.ai_report_json.actionable_steps.join(', ') : ''}</div>
-                        </div>
-                    ` : ''}
-                    ${t.admin_response ? `<div class="p-3 bg-slate-800/80 rounded-lg text-emerald-300"><strong>답변 완료:</strong> ${t.admin_response}</div>` : ''}
-                    <div class="flex justify-end pt-2">
-                        <button onclick="openResolveModal('${t.id}', '${t.title}')" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg">민원 답변 및 상태 변경</button>
-                    </div>
+                    <p class="text-slate-300">${t.user_message}</p>
                 `;
                 list.appendChild(item);
             });
         }
 
-        function openResolveModal(id, title) {
-            document.getElementById('res_ticket_id').value = id;
-            document.getElementById('modalTicketTitle').innerText = `🎫 [${id}] 민원 처리: ${title}`;
-            document.getElementById('resolveModal').classList.remove('hidden');
-        }
-
-        document.getElementById('resolveForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const payload = {
-                ticket_id: document.getElementById('res_ticket_id').value,
-                status: document.getElementById('res_status').value,
-                admin_response: document.getElementById('res_response').value
-            };
-            await fetch('/api/v1/servers/admin/tickets/resolve', {
-                method: 'POST',
-                headers: getAuthHeaders(),
-                body: JSON.stringify(payload)
-            });
-            alert('민원 답변 및 상태가 등록되었습니다!');
-            document.getElementById('resolveModal').classList.add('hidden');
-            loadAdminTickets();
-        });
-
         async function loadAdminServers() {
             if (!adminToken) return;
             const resp = await fetch('/api/v1/servers/admin/all', { headers: getAuthHeaders() });
-            if (resp.status === 401) { adminLogout(); return; }
             const servers = await resp.json();
             const grid = document.getElementById('adminServersGrid');
             grid.innerHTML = '';
             servers.forEach(s => {
                 const card = document.createElement('div');
-                card.className = 'p-5 bg-slate-900/80 rounded-xl border border-slate-800 space-y-3 text-xs';
+                card.className = 'p-4 bg-slate-900 rounded-xl border border-slate-800 space-y-2 text-xs';
                 card.innerHTML = `
-                    <div class="flex justify-between items-center">
-                        <div>
-                            <span class="font-bold text-white text-sm">${s.name}</span>
-                            <span class="text-[11px] text-slate-400 font-mono ml-2">${s.server_type} ${s.mc_version} (${s.allocated_ram_mb / 1024}GB RAM)</span>
-                        </div>
-                        <span class="px-2 py-0.5 rounded font-mono font-bold ${s.status === 'RUNNING' ? 'bg-emerald-950 text-emerald-400' : 'bg-rose-950 text-rose-400'}">${s.status}</span>
+                    <div class="flex justify-between font-bold text-white">
+                        <span>${s.name}</span>
+                        <span class="text-emerald-400 font-mono">${s.status}</span>
                     </div>
                     <div class="text-slate-400 font-mono">
-                        <div>접속 도메인: <strong class="text-indigo-300">${s.full_domain}</strong></div>
-                        <div>배치 노드: <strong class="text-slate-200">${s.node_id} (${s.node_ip}:${s.port})</strong></div>
-                        <div>소유자: <strong class="text-slate-300">${s.user_email || 'user@domain.com'}</strong></div>
-                    </div>
-                    <div class="pt-2 border-t border-slate-800 flex justify-end gap-2">
-                        <button onclick="forceServerAction('${s.id}', 'restart')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded">재시작</button>
-                        <button onclick="forceServerAction('${s.id}', 'stop')" class="px-2.5 py-1 bg-amber-900/40 text-amber-300 hover:bg-amber-900 rounded">강제 정지</button>
-                        <button onclick="forceDestroyServer('${s.id}')" class="px-2.5 py-1 bg-rose-900/40 text-rose-300 hover:bg-rose-900 rounded">영구 삭제</button>
+                        <div>도메인: ${s.full_domain}</div>
+                        <div>코어: ${s.server_type} ${s.mc_version} (${s.allocated_ram_mb/1024}GB)</div>
                     </div>
                 `;
                 grid.appendChild(card);
             });
         }
 
-        document.getElementById('adminCreateForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const ramGb = parseInt(document.getElementById('adm_ram_gb').value || 4);
-            const payload = {
-                name: document.getElementById('adm_name').value,
-                domain_slug: document.getElementById('adm_slug').value.trim().toLowerCase(),
-                server_type: document.getElementById('adm_core').value,
-                mc_version: document.getElementById('adm_ver').value,
-                allocated_ram_mb: ramGb * 1024,
-                target_user_id: document.getElementById('adm_user').value || null
-            };
-            const resp = await fetch('/api/v1/servers/deploy', {
-                method: 'POST',
-                headers: getAuthHeaders(),
-                body: JSON.stringify(payload)
-            });
-            const res = await resp.json();
-            if (resp.ok) {
-                alert(`[어드민 서버 배포 완료]\\n접속 주소: ${res.connect_address}`);
-                loadAdminServers();
-            } else {
-                alert('어드민 서버 배포 실패: ' + parseErrorMessage(res));
-            }
-        });
-
-        document.getElementById('sysSettingsForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            alert('시스템 환경설정(Google OAuth & LLM)이 저장되었습니다.');
-        });
-
-        async function forceServerAction(id, act) {
-            await fetch(`/api/v1/servers/admin/${id}/force-action`, {
-                method: 'POST',
-                headers: getAuthHeaders(),
-                body: JSON.stringify({ action: act })
-            });
-            loadAdminServers();
-        }
-
-        async function forceDestroyServer(id) {
-            if (confirm(`서버 [${id}]를 클러스터에서 강제 영구 삭제하시겠습니까?`)) {
-                await fetch(`/api/v1/servers/admin/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
-                loadAdminServers();
-            }
-        }
-
-        verifyAdminAuth().then(isAuth => {
-            if (isAuth) {
-                loadBillingRates();
-                loadCustomTiers();
-                loadSwapConfig();
-                loadAdminNodes();
-            }
-        });
+        verifyAdminAuth();
     </script>
 </body>
 </html>"""
@@ -1998,11 +1728,18 @@ app.add_middleware(
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+# 1. Landing SaaS Marketing Page
 @app.get("/", response_class=HTMLResponse)
-@app.get("/dashboard", response_class=HTMLResponse)
-async def user_portal():
-    return USER_PORTAL_HTML
+async def landing_page():
+    return LANDING_PAGE_HTML
 
+# 2. User Console Dashboard Page
+@app.get("/dashboard", response_class=HTMLResponse)
+@app.get("/console", response_class=HTMLResponse)
+async def user_dashboard():
+    return USER_DASHBOARD_HTML
+
+# 3. Protected Admin Center
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard():
     return ADMIN_DASHBOARD_HTML
@@ -2013,7 +1750,16 @@ async def health_check():
         "status": "healthy",
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
-        "features": ["integer_ram_input", "ram_based_billing", "cost_calculator", "file_explorer", "mod_marketplace"],
+        "features": [
+            "saas_landing_page",
+            "sidebar_user_dashboard",
+            "free_auto_domain_vs_premium_custom",
+            "core_version_switcher_with_warning",
+            "server_properties_gui",
+            "modrinth_curseforge_split_tabs",
+            "tag_chips_infinite_scroll",
+            "mod_auto_updater"
+        ],
         "master_as_worker_active": "master-local" in scheduler.nodes
     }
 

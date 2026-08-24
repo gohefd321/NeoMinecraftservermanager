@@ -1,10 +1,10 @@
 """
 servers.py - Minecraft Server Management Supporting:
-- Real-Time Versions (26.2, 26.1, 26.3-snapshot, 1.20.4, etc.)
-- 12 Cores: PAPER, PURPUR, FOLIA, FABRIC, FORGE, NEOFORGE, SPONGE, VANILLA, SPIGOT, CRAFTBUKKIT, VELOCITY, BUNGEECORD
-- Domain Customization & Real-Time Duplication Check & Credit Deductions
-- Web File Explorer & Config Editor & Upload & One-Click World ZIP Download
-- Modrinth & CurseForge Marketplace (Prism Launcher Style)
+- Free Default Auto Domain vs 1,000 KRW Premium Custom Domain
+- Server Version/Core Switcher with Mod Loader Dependency Warning
+- server.properties Comprehensive GUI Config Editor
+- Modrinth & CurseForge Split Tabs, Tag Filters, Infinite Scroll & 1-Click Mod Updater
+- Modpack Archive (.zip, .mrpack) Direct Importer
 """
 import uuid
 import os
@@ -20,7 +20,9 @@ from app.models.schema import (
     TelemetryReportPayload, ServerResponse, AIReportResponse, HelpdeskTicket,
     HelpdeskTicketCreate, TicketResolveRequest, TicketStatus, ServerStatus,
     ServerType, ServerPreset, DomainCheckResponse, FileItem, FileContentRead,
-    FileContentSave, ModSearchItem, ModDetailResponse, ModInstallRequest
+    FileContentSave, ModSearchItem, ModDetailResponse, ModInstallRequest,
+    ServerPropertiesModel, ServerVersionChangeRequest, InstalledModItem,
+    ModUpdateRequest
 )
 from app.core.security import sanitize_rcon_command, require_admin_auth
 from app.core.database import db
@@ -31,7 +33,7 @@ from app.services.version_manifest import version_service
 from app.services.file_manager import file_manager
 from app.services.mod_indexer import mod_engine
 
-router = APIRouter(prefix="/servers", tags=["Minecraft Servers & Helpdesk"])
+router = APIRouter(prefix="/servers", tags=["Minecraft Servers & Management"])
 
 # In-memory Mock Stores
 MOCK_SERVERS: Dict[str, Dict[str, Any]] = {
@@ -77,28 +79,22 @@ MOCK_TICKETS: Dict[str, Dict[str, Any]] = {
 }
 
 # ---------------------------------------------------------------------------
-# 1. Mojang Official Version Manifest (Releases + Snapshots)
+# 1. Mojang Official Version Manifest
 # ---------------------------------------------------------------------------
 @router.get("/versions")
 async def get_available_mc_versions(refresh: bool = False):
-    manifest = await version_service.get_version_manifest(force_refresh=refresh)
-    return manifest
+    return await version_service.get_version_manifest(force_refresh=refresh)
 
 # ---------------------------------------------------------------------------
-# 2. Domain Customization & Real-Time Check
+# 2. Domain Availability Check
 # ---------------------------------------------------------------------------
 @router.get("/check-domain", response_model=DomainCheckResponse)
 async def check_domain_availability(slug: str = Query(..., min_length=3, max_length=32)):
-    """접속 도메인 중복 여부 실시간 검사 및 커스텀 비용 안내"""
     clean_slug = slug.lower().strip()
-    
-    # 예약어 및 이미 존재하는 슬러그 검사
     reserved = {"admin", "api", "auth", "mail", "portal", "dashboard", "root", "status"}
     is_taken = clean_slug in reserved or any(s["domain_slug"].lower() == clean_slug for s in MOCK_SERVERS.values())
 
-    suggested = []
-    if is_taken:
-        suggested = [f"{clean_slug}-mc", f"{clean_slug}01", f"play-{clean_slug}"]
+    suggested = [f"{clean_slug}-mc", f"{clean_slug}01", f"play-{clean_slug}"] if is_taken else []
 
     return DomainCheckResponse(
         slug=clean_slug,
@@ -106,11 +102,11 @@ async def check_domain_availability(slug: str = Query(..., min_length=3, max_len
         is_premium=True,
         custom_fee_krw=1000,
         suggested_slugs=suggested,
-        message="사용 가능한 도메인입니다. (커스텀 도메인 요금 1,000 KRW 차감)" if not is_taken else "이미 사용 중인 도메인입니다. 다른 이름을 선택해주세요."
+        message="사용 가능한 프리미엄 도메인입니다. (1,000 KRW 차감)" if not is_taken else "이미 사용 중인 도메인입니다. 다른 이름을 선택해주세요."
     )
 
 # ---------------------------------------------------------------------------
-# 3. Local Container Deployment Helper
+# 3. Server Provisioning & Deployment
 # ---------------------------------------------------------------------------
 def deploy_local_container(server_data: Dict[str, Any], req: ServerDeployRequest):
     try:
@@ -158,26 +154,28 @@ def deploy_local_container(server_data: Dict[str, Any], req: ServerDeployRequest
 @router.post("/deploy")
 async def deploy_server(req: ServerDeployRequest):
     """
-    마인크래프트 서버 배포 (도메인 중복 검사 & 커스텀 도메인 크레딧 차감)
+    서버 배포:
+    - is_custom_domain=False 시: 무료 자동 발급 도메인 (mc-xxxxxx.domain.com) -> 요금 0원
+    - is_custom_domain=True 시: 사용자 지정 서브도메인 -> 1,000 KRW 차감
     """
-    clean_slug = req.domain_slug.lower().strip()
+    # 1. 도메인 슬러그 결정 (무료 자동 vs 프리미엄 커스텀)
+    if req.is_custom_domain and req.domain_slug:
+        clean_slug = req.domain_slug.lower().strip()
+        if any(s["domain_slug"].lower() == clean_slug for s in MOCK_SERVERS.values()):
+            raise HTTPException(
+                status_code=400,
+                detail=f"접속 도메인 '{clean_slug}.domain.com'은 이미 다른 서버에서 사용 중입니다. 다른 이름을 지정해주세요."
+            )
+        custom_fee = 1000
+    else:
+        # 무료 자동 발급
+        clean_slug = f"mc-{uuid.uuid4().hex[:6]}"
+        custom_fee = 0
 
-    # 도메인 중복 검사
-    if any(s["domain_slug"].lower() == clean_slug for s in MOCK_SERVERS.values()):
-        raise HTTPException(
-            status_code=400,
-            detail=f"접속 도메인 '{clean_slug}.domain.com'은 이미 다른 서버에서 사용 중입니다. 다른 이름을 지정해주세요."
-        )
-
-    # 커스텀 도메인 추가 크레딧 차감 (1,000 KRW)
     user_email = req.target_user_id or "user@domain.com"
-    custom_fee_applied = 0
-    if req.is_custom_domain:
-        custom_fee_applied = 1000
-
-    injected_plugins = []
     actual_version = req.mc_version or "26.2"
     actual_server_type = req.server_type.value if hasattr(req.server_type, "value") else str(req.server_type)
+    injected_plugins = []
 
     if req.preset_type == ServerPreset.BUILDER_FLAT:
         actual_server_type = "PAPER"
@@ -185,12 +183,9 @@ async def deploy_server(req: ServerDeployRequest):
     elif req.preset_type == ServerPreset.SURVIVAL_SMP:
         actual_server_type = "PAPER"
         injected_plugins = ["EssentialsX (TPA, Spawn, Home)", "Chunky", "Spark"]
-    elif actual_server_type == "VELOCITY":
-        actual_version = "latest"
-        injected_plugins = ["Velocity L4 Forwarding", "RedisBungeeBridge"]
-    elif actual_server_type in ("BUNGEECORD", "WATERFALL"):
-        actual_version = "latest"
-        injected_plugins = ["BungeeGuard", "RedisBungee"]
+    elif req.preset_type == ServerPreset.MODPACK_READY:
+        if actual_server_type not in ("FORGE", "NEOFORGE", "FABRIC"):
+            actual_server_type = "FABRIC"
 
     assigned_node = scheduler.select_best_node(
         required_ram_mb=req.allocated_ram_mb,
@@ -227,6 +222,17 @@ async def deploy_server(req: ServerDeployRequest):
 
     MOCK_SERVERS[server_id] = server_data
 
+    # 모드팩 ID가 제공된 경우 자동 설치
+    if req.modpack_id:
+        try:
+            await mod_engine.install_mod_to_server(
+                server_id=server_id,
+                mod_id_or_slug=req.modpack_id,
+                project_type="modpack"
+            )
+        except Exception:
+            pass
+
     if assigned_node.is_master_node:
         deploy_local_container(server_data, req)
 
@@ -244,30 +250,82 @@ async def deploy_server(req: ServerDeployRequest):
         "billing_multiplier": assigned_node.billing_multiplier,
         "allocated_ram_mb": req.allocated_ram_mb,
         "injected_plugins": injected_plugins,
-        "custom_domain_fee_deducted_krw": custom_fee_applied,
+        "custom_domain_fee_deducted_krw": custom_fee,
         "message": f"[{actual_server_type}] 버전 {actual_version} 서버 [{req.name}]가 성공적으로 배포되었습니다."
     }
 
 # ---------------------------------------------------------------------------
-# 4. Web File Explorer & Config Editor & Upload & World Download
+# 4. Server Version / Core Switcher with Mod Loader Dependency Warning
+# ---------------------------------------------------------------------------
+@router.put("/{server_id}/version")
+async def switch_server_version(server_id: str, req: ServerVersionChangeRequest):
+    """
+    서버의 마인크래프트 버전 및 구동기(코어) 변경
+    (모드팩/모드가 설치된 상태에서 비호환 구동기로 변경 시 경고)
+    """
+    if server_id not in MOCK_SERVERS:
+        raise HTTPException(status_code=404, detail="서버를 찾을 수 없습니다.")
+
+    server = MOCK_SERVERS[server_id]
+    cur_type = server["server_type"]
+    new_type = req.server_type.upper()
+
+    installed_mods = mod_engine.get_installed_mods(server_id)
+    has_mods = any(m.project_type == "mod" for m in installed_mods)
+
+    # 모드가 설치되어 있는데 Paper나 Vanilla로 변경하려는 경우
+    if has_mods and cur_type in ("FABRIC", "FORGE", "NEOFORGE") and new_type in ("PAPER", "PURPUR", "VANILLA", "SPIGOT"):
+        if not req.force:
+            raise HTTPException(
+                status_code=400,
+                detail=f"⚠️ 모드로더 호환성 경고: 현재 서버에 {len(installed_mods)}개의 모드가 설치되어 있습니다. [{new_type}] 구동기로 변경 시 기존 모드들이 실행되지 않습니다. 계속 진행하시려면 '강제 변경'을 선택하십시오."
+            )
+
+    server["server_type"] = new_type
+    server["mc_version"] = req.mc_version
+
+    return {
+        "status": "success",
+        "server_id": server_id,
+        "server_type": new_type,
+        "mc_version": req.mc_version,
+        "message": f"서버 구동기가 [{new_type} {req.mc_version}]으로 성공적으로 변경되었습니다. (서버 재시작 시 적용)"
+    }
+
+# ---------------------------------------------------------------------------
+# 5. server.properties GUI Config Editor API
+# ---------------------------------------------------------------------------
+@router.get("/{server_id}/properties", response_model=ServerPropertiesModel)
+async def get_server_properties_gui(server_id: str):
+    """server.properties 전체 설정을 파싱하여 GUI 폼으로 제공"""
+    if server_id not in MOCK_SERVERS:
+        raise HTTPException(status_code=404, detail="서버를 찾을 수 없습니다.")
+    return file_manager.get_parsed_properties(server_id)
+
+@router.put("/{server_id}/properties")
+async def save_server_properties_gui(server_id: str, props: ServerPropertiesModel):
+    """GUI 폼에서 수정한 server.properties 설정을 서버에 안전하게 저장"""
+    if server_id not in MOCK_SERVERS:
+        raise HTTPException(status_code=404, detail="서버를 찾을 수 없습니다.")
+    return file_manager.save_parsed_properties(server_id, props)
+
+# ---------------------------------------------------------------------------
+# 6. Web File Explorer & World ZIP Download
 # ---------------------------------------------------------------------------
 @router.get("/{server_id}/files", response_model=List[FileItem])
 async def list_server_files(server_id: str, path: str = ""):
-    """서버 파일 및 디렉토리 목록 조회"""
     if server_id not in MOCK_SERVERS:
         raise HTTPException(status_code=404, detail="서버를 찾을 수 없습니다.")
     return file_manager.list_files(server_id, path)
 
 @router.get("/{server_id}/files/content", response_model=FileContentRead)
 async def read_server_file(server_id: str, path: str):
-    """서버 설정 텍스트 파일 읽기 (server.properties, bukkit.yml 등)"""
     if server_id not in MOCK_SERVERS:
         raise HTTPException(status_code=404, detail="서버를 찾을 수 없습니다.")
     return file_manager.read_file_content(server_id, path)
 
 @router.put("/{server_id}/files/content")
 async def save_server_file(server_id: str, req: FileContentSave):
-    """서버 설정 텍스트 파일 수정 및 저장"""
     if server_id not in MOCK_SERVERS:
         raise HTTPException(status_code=404, detail="서버를 찾을 수 없습니다.")
     return file_manager.save_file_content(server_id, req.path, req.content)
@@ -278,36 +336,27 @@ async def upload_server_file(
     path: str = Form(""),
     file: UploadFile = File(...)
 ):
-    """서버에 플러그인, 모드, 맵, 설정 파일 직접 업로드"""
     if server_id not in MOCK_SERVERS:
         raise HTTPException(status_code=404, detail="서버를 찾을 수 없습니다.")
-    
     contents = await file.read()
-    res = file_manager.save_uploaded_file(server_id, path, file.filename, contents)
-    return res
+    return file_manager.save_uploaded_file(server_id, path, file.filename, contents)
 
 @router.get("/{server_id}/files/download")
 async def download_single_file(server_id: str, path: str):
-    """단일 파일 다운로드"""
     if server_id not in MOCK_SERVERS:
         raise HTTPException(status_code=404, detail="서버를 찾을 수 없습니다.")
     abs_path = file_manager._resolve_safe_path(server_id, path)
     if not os.path.exists(abs_path) or os.path.isdir(abs_path):
-        raise HTTPException(status_code=404, detail="다운로드할 파일을 찾을 수 없습니다.")
-    
-    filename = os.path.basename(abs_path)
-    return FileResponse(abs_path, filename=filename, media_type="application/octet-stream")
+        raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
+    return FileResponse(abs_path, filename=os.path.basename(abs_path), media_type="application/octet-stream")
 
 @router.get("/{server_id}/world/download")
 async def download_world_zip(server_id: str):
-    """월드 맵 폴더(world, world_nether, world_the_end)를 ZIP으로 즉시 압축 다운로드"""
     if server_id not in MOCK_SERVERS:
         raise HTTPException(status_code=404, detail="서버를 찾을 수 없습니다.")
-
     server = MOCK_SERVERS[server_id]
     zip_stream = file_manager.create_world_archive_stream(server_id)
     zip_filename = f"{server['domain_slug']}_world_backup_{datetime.utcnow().strftime('%Y%m%d_%H%M')}.zip"
-
     return StreamingResponse(
         zip_stream,
         media_type="application/zip",
@@ -315,45 +364,82 @@ async def download_world_zip(server_id: str):
     )
 
 # ---------------------------------------------------------------------------
-# 5. Modrinth & CurseForge Marketplace (Prism Launcher Style)
+# 7. Modrinth & CurseForge Marketplace (Tabs, Tags, Infinite Scroll & Updater)
 # ---------------------------------------------------------------------------
+@router.get("/mods/categories")
+async def get_mod_categories_and_tags(source: str = "modrinth"):
+    """Modrinth 및 CurseForge 전체 태그/카테고리 목록 조회"""
+    return mod_engine.get_categories_and_tags(source)
+
 @router.get("/mods/search", response_model=List[ModSearchItem])
 async def search_mods(
     query: str = "",
     loader: Optional[str] = "all",
     version: Optional[str] = "all",
-    project_type: Optional[str] = None
+    project_type: Optional[str] = None, # "mod" or "modpack"
+    source: Optional[str] = "modrinth", # "modrinth" or "curseforge"
+    category: Optional[str] = None,
+    offset: int = 0,
+    limit: int = 10
 ):
-    """모드 및 모드팩 실시간 검색 (Modrinth API & 내장 카탈로그)"""
+    """모드 & 모드팩 실시간 검색 (무한 스크롤 및 소스/태그/버전 필터 지원)"""
     return await mod_engine.search_projects(
         query=query,
         loader=loader,
         version=version,
-        project_type=project_type
+        project_type=project_type,
+        source=source,
+        category=category,
+        offset=offset,
+        limit=limit
     )
 
 @router.get("/mods/{mod_id}", response_model=ModDetailResponse)
 async def get_mod_detail(mod_id: str):
-    """모드/모드팩 상세 소개 및 마크다운 설명서 조회"""
     return await mod_engine.get_project_detail(mod_id)
 
 @router.post("/{server_id}/mods/install")
 async def install_mod_to_server(server_id: str, req: ModInstallRequest):
-    """서버에 모드 / 모드팩 1클릭 자동 설치"""
     if server_id not in MOCK_SERVERS:
         raise HTTPException(status_code=404, detail="서버를 찾을 수 없습니다.")
 
-    res = await mod_engine.install_mod_to_server(
+    return await mod_engine.install_mod_to_server(
         server_id=server_id,
         mod_id_or_slug=req.mod_id,
         project_type=req.project_type,
+        source=req.source,
         custom_download_url=req.download_url,
         custom_filename=req.filename
     )
-    return res
+
+@router.get("/{server_id}/installed-mods", response_model=List[InstalledModItem])
+async def get_installed_mods(server_id: str):
+    """현재 서버에 설치된 모드/플러그인 및 업데이트 가능 여부 조회"""
+    if server_id not in MOCK_SERVERS:
+        raise HTTPException(status_code=404, detail="서버를 찾을 수 없습니다.")
+    return mod_engine.get_installed_mods(server_id)
+
+@router.post("/{server_id}/mods/update")
+async def update_installed_mods(server_id: str, req: ModUpdateRequest):
+    """설치된 모드/플러그인 최신 버전으로 1클릭 일괄/선택 업데이트"""
+    if server_id not in MOCK_SERVERS:
+        raise HTTPException(status_code=404, detail="서버를 찾을 수 없습니다.")
+    return await mod_engine.update_mods(server_id, req.mod_ids)
+
+@router.post("/{server_id}/modpack/import")
+async def import_modpack_archive_file(
+    server_id: str,
+    file: UploadFile = File(...)
+):
+    """CurseForge ZIP 또는 Modrinth .mrpack 모드팩 아카이브 직접 업로드 및 서버 임포트"""
+    if server_id not in MOCK_SERVERS:
+        raise HTTPException(status_code=404, detail="서버를 찾을 수 없습니다.")
+
+    contents = await file.read()
+    return mod_engine.import_modpack_archive(server_id, file.filename, contents)
 
 # ---------------------------------------------------------------------------
-# 6. RCON & Telemetry & AI Diagnostic
+# 8. RCON & Telemetry & AI Diagnostic
 # ---------------------------------------------------------------------------
 @router.post("/{server_id}/rcon")
 async def execute_rcon(server_id: str, req: RconExecuteRequest):
@@ -387,7 +473,7 @@ async def trigger_ai_diagnostic(server_id: str, spark_dump: str = ""):
     return report
 
 # ---------------------------------------------------------------------------
-# 7. Admin Server & Helpdesk Endpoints (Protected by require_admin_auth)
+# 9. Admin Server & Helpdesk Endpoints
 # ---------------------------------------------------------------------------
 @router.get("/admin/all", dependencies=[Depends(require_admin_auth)])
 async def get_all_servers_admin():

@@ -1,8 +1,9 @@
 """
-file_manager.py - Sandboxed Minecraft Server File System & World Archiver
+file_manager.py - Sandboxed Minecraft Server File System, Properties Editor & World Archiver
 Supports:
-- Safe path resolution (prevents path traversal / Directory Traversal attacks)
-- File Explorer & Config Editing (server.properties, paper.yml, etc.)
+- Safe path resolution (prevents directory traversal)
+- server.properties GUI key-value parser & writer
+- File Explorer & Config Editing
 - File Upload & Download
 - One-click World ZIP Archive Streaming
 """
@@ -13,7 +14,7 @@ import shutil
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from fastapi import HTTPException
-from app.models.schema import FileItem, FileContentRead
+from app.models.schema import FileItem, FileContentRead, ServerPropertiesModel
 
 EDITABLE_EXTENSIONS = {
     ".properties", ".yml", ".yaml", ".json", ".toml", ".txt", ".log",
@@ -32,7 +33,6 @@ class ServerFileManager:
         if os.path.exists(fallback_dir):
             return fallback_dir
 
-        # 없으면 기본 디렉토리 및 필수 config 초기 생성
         os.makedirs(fallback_dir, exist_ok=True)
         self._init_default_configs(fallback_dir, server_id)
         return fallback_dir
@@ -53,6 +53,17 @@ class ServerFileManager:
                     "enable-rcon=true\n"
                     "view-distance=10\n"
                     "simulation-distance=8\n"
+                    "allow-flight=false\n"
+                    "spawn-protection=16\n"
+                    "white-list=false\n"
+                    "enforce-whitelist=false\n"
+                    "hardcore=false\n"
+                    "spawn-monsters=true\n"
+                    "spawn-animals=true\n"
+                    "spawn-npcs=true\n"
+                    "allow-nether=true\n"
+                    "generate-structures=true\n"
+                    "level-seed=\n"
                 )
         os.makedirs(os.path.join(root_dir, "plugins"), exist_ok=True)
         os.makedirs(os.path.join(root_dir, "mods"), exist_ok=True)
@@ -63,11 +74,90 @@ class ServerFileManager:
         root = self.get_server_root(server_id)
         clean_rel = rel_path.strip().lstrip("/")
         abs_path = os.path.abspath(os.path.join(root, clean_rel))
-        
-        # 경로 순회(Path Traversal) 방지
         if not abs_path.startswith(os.path.abspath(root)):
             raise HTTPException(status_code=403, detail="허가되지 않은 상위 디렉터리 접근입니다.")
         return abs_path
+
+    def get_parsed_properties(self, server_id: str) -> ServerPropertiesModel:
+        root = self.get_server_root(server_id)
+        props_path = os.path.join(root, "server.properties")
+        if not os.path.exists(props_path):
+            self._init_default_configs(root, server_id)
+
+        props: Dict[str, Any] = {}
+        extra: Dict[str, str] = {}
+
+        try:
+            with open(props_path, "r", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k, v = line.split("=", 1)
+                    k, v = k.strip(), v.strip()
+                    if k == "server-port": props["server_port"] = int(v) if v.isdigit() else 25565
+                    elif k == "gamemode": props["gamemode"] = v
+                    elif k == "difficulty": props["difficulty"] = v
+                    elif k == "pvp": props["pvp"] = (v.lower() == "true")
+                    elif k == "max-players": props["max_players"] = int(v) if v.isdigit() else 20
+                    elif k == "motd": props["motd"] = v
+                    elif k == "online-mode": props["online_mode"] = (v.lower() == "true")
+                    elif k == "enable-rcon": props["enable_rcon"] = (v.lower() == "true")
+                    elif k == "view-distance": props["view_distance"] = int(v) if v.isdigit() else 10
+                    elif k == "simulation-distance": props["simulation_distance"] = int(v) if v.isdigit() else 8
+                    elif k == "allow-flight": props["allow_flight"] = (v.lower() == "true")
+                    elif k == "spawn-protection": props["spawn_protection"] = int(v) if v.isdigit() else 16
+                    elif k == "white-list": props["white_list"] = (v.lower() == "true")
+                    elif k == "enforce-whitelist": props["enforce_whitelist"] = (v.lower() == "true")
+                    elif k == "hardcore": props["hardcore"] = (v.lower() == "true")
+                    elif k == "spawn-monsters": props["spawn_monsters"] = (v.lower() == "true")
+                    elif k == "spawn-animals": props["spawn_animals"] = (v.lower() == "true")
+                    elif k == "spawn-npcs": props["spawn_npcs"] = (v.lower() == "true")
+                    elif k == "allow-nether": props["allow_nether"] = (v.lower() == "true")
+                    elif k == "generate-structures": props["generate_structures"] = (v.lower() == "true")
+                    elif k == "level-seed": props["level_seed"] = v
+                    else: extra[k] = v
+        except Exception as e:
+            print(f"[Properties Read Error] {e}")
+
+        props["extra_properties"] = extra
+        return ServerPropertiesModel(**props)
+
+    def save_parsed_properties(self, server_id: str, model: ServerPropertiesModel):
+        root = self.get_server_root(server_id)
+        props_path = os.path.join(root, "server.properties")
+
+        lines = [
+            f"# Minecraft Server Properties (Updated {datetime.utcnow().isoformat()})\n",
+            f"server-port={model.server_port}\n",
+            f"gamemode={model.gamemode}\n",
+            f"difficulty={model.difficulty}\n",
+            f"pvp={'true' if model.pvp else 'false'}\n",
+            f"max-players={model.max_players}\n",
+            f"motd={model.motd}\n",
+            f"online-mode={'true' if model.online_mode else 'false'}\n",
+            f"enable-rcon={'true' if model.enable_rcon else 'false'}\n",
+            f"view-distance={model.view_distance}\n",
+            f"simulation-distance={model.simulation_distance}\n",
+            f"allow-flight={'true' if model.allow_flight else 'false'}\n",
+            f"spawn-protection={model.spawn_protection}\n",
+            f"white-list={'true' if model.white_list else 'false'}\n",
+            f"enforce-whitelist={'true' if model.enforce_whitelist else 'false'}\n",
+            f"hardcore={'true' if model.hardcore else 'false'}\n",
+            f"spawn-monsters={'true' if model.spawn_monsters else 'false'}\n",
+            f"spawn-animals={'true' if model.spawn_animals else 'false'}\n",
+            f"spawn-npcs={'true' if model.spawn_npcs else 'false'}\n",
+            f"allow-nether={'true' if model.allow_nether else 'false'}\n",
+            f"generate-structures={'true' if model.generate_structures else 'false'}\n",
+            f"level-seed={model.level_seed}\n",
+        ]
+        for k, v in model.extra_properties.items():
+            lines.append(f"{k}={v}\n")
+
+        with open(props_path, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+
+        return {"status": "success", "message": "server.properties가 성공적으로 저장되었습니다."}
 
     def list_files(self, server_id: str, rel_path: str = "") -> List[FileItem]:
         target_dir = self._resolve_safe_path(server_id, rel_path)
@@ -94,7 +184,6 @@ class ServerFileManager:
         except Exception as e:
             print(f"[FileManager Error] {e}")
 
-        # 폴더 우선, 그 후 파일명 순 정렬
         items.sort(key=lambda x: (not x.is_dir, x.name.lower()))
         return items
 
@@ -104,7 +193,7 @@ class ServerFileManager:
             raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
 
         size = os.path.getsize(target_file)
-        if size > 5 * 1024 * 1024:  # 5MB 제한
+        if size > 5 * 1024 * 1024:
             raise HTTPException(status_code=400, detail="텍스트 에디터는 5MB 이하 파일만 열 수 있습니다. 다운로드를 이용하세요.")
 
         try:
@@ -152,7 +241,6 @@ class ServerFileManager:
                             zip_file.write(file_full_path, arcname)
 
             if not found_any:
-                # 월드 폴더가 없으면 기본 README 파일 압축
                 zip_file.writestr("README.txt", f"World archive for {server_id} is being generated.")
 
         zip_buffer.seek(0)

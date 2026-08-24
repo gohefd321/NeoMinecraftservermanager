@@ -1,10 +1,12 @@
 """
 schema.py - Pydantic Request/Response Models and Enums (Pydantic v2 Compatible)
 Supports:
-- RAM-based Pricing Calculation (per_ram_gb_rate) & Dynamic Tier Multipliers
-- Integer RAM Allocation (Custom RAM size in MB or GB)
-- Real-Time 1-Minute Estimated Cost Calculator
-- File Explorer & Mod Marketplace & Domain Checks
+- Free Default Domain vs Premium Custom Domain (1,000 KRW toggle)
+- Integer RAM Allocation & Live Cost Calculator
+- server.properties Comprehensive GUI Config Editor
+- Modrinth & CurseForge Tag/Category Indexes, Infinite Scroll, and 1-Click Auto-Updater
+- Server Engine & Version Switcher with Mod Dependency Warnings
+- Modpack Direct ZIP / mrpack Importer
 """
 from enum import Enum
 from typing import List, Optional, Dict, Any, Union
@@ -24,29 +26,30 @@ class ServerType(str, Enum):
     # 주류 및 최적화
     PAPER = "PAPER"
     PURPUR = "PURPUR"
-    FOLIA = "FOLIA"                         # PaperMC 멀티스레드 리전 기반 차세대 코어
+    FOLIA = "FOLIA"
     FABRIC = "FABRIC"
     
     # 대형 모드팩
-    FORGE = "FORGE"                         # 일반 공식 Forge
+    FORGE = "FORGE"
     NEOFORGE = "NEOFORGE"
-    SPONGE = "SPONGE"                       # SpongeVanilla / SpongeForge
+    SPONGE = "SPONGE"
 
     # 공식 및 클래식
-    VANILLA = "VANILLA"                     # 모장 공식 바닐라 (스냅샷 완벽 호환)
-    SPIGOT = "SPIGOT"                       # 전통적인 스피곳
-    CRAFTBUKKIT = "CRAFTBUKKIT"             # 클래식 크래프트버킷
+    VANILLA = "VANILLA"
+    SPIGOT = "SPIGOT"
+    CRAFTBUKKIT = "CRAFTBUKKIT"
 
     # 프록시 게이트웨이
-    VELOCITY = "VELOCITY"                   # Velocity L4 Proxy
-    BUNGEECORD = "BUNGEECORD"               # BungeeCord Proxy
-    WATERFALL = "WATERFALL"                 # Waterfall Proxy
+    VELOCITY = "VELOCITY"
+    BUNGEECORD = "BUNGEECORD"
+    WATERFALL = "WATERFALL"
 
 class ServerPreset(str, Enum):
-    BUILDER_FLAT = "BUILDER_FLAT"           # 건축 서버 (평지, 월드에딧, 최적화)
-    SURVIVAL_SMP = "SURVIVAL_SMP"           # 야생 서버 (야생맵, TPA/Home, Spark)
-    ADVANCED_CUSTOM = "ADVANCED_CUSTOM"     # 고급 커스텀 서버 (모든 구동기 및 스냅샷)
-    PROXY_NETWORK = "PROXY_NETWORK"         # Velocity / BungeeCord 프록시 게이트웨이
+    BUILDER_FLAT = "BUILDER_FLAT"
+    SURVIVAL_SMP = "SURVIVAL_SMP"
+    MODPACK_READY = "MODPACK_READY"
+    ADVANCED_CUSTOM = "ADVANCED_CUSTOM"
+    PROXY_NETWORK = "PROXY_NETWORK"
 
 class ServerStatus(str, Enum):
     RUNNING = "RUNNING"
@@ -62,7 +65,7 @@ class TicketStatus(str, Enum):
     CLOSED = "CLOSED"
 
 # ---------------------------------------------------------------------------
-# Custom Tier (Node Grouping) & Swap Configuration Models
+# Custom Tier & Swap Configuration Models
 # ---------------------------------------------------------------------------
 class CustomTierCreate(BaseModel):
     tier_id: str = Field(..., pattern=r"^[a-z0-9_-]{3,32}$")
@@ -81,19 +84,19 @@ class CustomTierResponse(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class SwapConfigModel(BaseModel):
-    swap_ratio: float = Field(default=1.5, ge=0.0, le=5.0, description="RAM 대비 스왑 할당 비율 (예: 1.5배)")
-    zram_compression_algo: str = Field(default="zstd", description="ZRAM 압축 알고리즘 (zstd, lz4, lzo-rle)")
-    swappiness: int = Field(default=60, ge=0, le=200, description="커널 swappiness 수치")
-    enable_generational_zgc: bool = Field(default=True, description="JDK 21+ Generational ZGC 기본 활성화 여부")
+    swap_ratio: float = Field(default=1.5, ge=0.0, le=5.0)
+    zram_compression_algo: str = Field(default="zstd")
+    swappiness: int = Field(default=60, ge=0, le=200)
+    enable_generational_zgc: bool = Field(default=True)
 
 # ---------------------------------------------------------------------------
 # Dynamic Billing Configuration (RAM-Based Pricing Included)
 # ---------------------------------------------------------------------------
 class BillingRateConfig(BaseModel):
-    base_container_per_min: float = Field(default=0.20, ge=0.0, le=100.0, description="기본 컨테이너 유지비 (분당 KRW)")
-    per_ram_gb_rate: float = Field(default=0.08, ge=0.0, le=10.0, description="점유/할당 RAM 1GB당 분당 단가 (KRW)")
-    per_chunk_rate: float = Field(default=0.0005, ge=0.0, le=1.0, description="로드된 청크당 분당 단가 (KRW)")
-    per_player_rate: float = Field(default=0.0500, ge=0.0, le=1.0, description="동접 플레이어당 분당 단가 (KRW)")
+    base_container_per_min: float = Field(default=0.20, ge=0.0, le=100.0)
+    per_ram_gb_rate: float = Field(default=0.08, ge=0.0, le=10.0)
+    per_chunk_rate: float = Field(default=0.0005, ge=0.0, le=1.0)
+    per_player_rate: float = Field(default=0.0500, ge=0.0, le=1.0)
     tier_multipliers: Dict[str, float] = Field(default_factory=dict)
 
 class NodeMultiplierUpdate(BaseModel):
@@ -107,10 +110,7 @@ class UserRegisterRequest(BaseModel):
     email: EmailStr
     oauth_provider: str = "google"
     oauth_token: str
-    is_adult_verified: bool = Field(
-        ...,
-        description="19세 이상 법정 성인 확인 필수 체크박스"
-    )
+    is_adult_verified: bool = Field(...)
 
 class UserResponse(BaseModel):
     id: str
@@ -152,32 +152,33 @@ class NodeHealthReport(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 # ---------------------------------------------------------------------------
-# Domain Check & Pricing
+# Domain Check & Pricing (Free default vs Optional 1,000 KRW Custom)
 # ---------------------------------------------------------------------------
 class DomainCheckResponse(BaseModel):
     slug: str
     is_available: bool
-    is_premium: bool = False
+    is_premium: bool = True
     custom_fee_krw: int = 1000
     suggested_slugs: List[str] = Field(default_factory=list)
     message: str
 
 # ---------------------------------------------------------------------------
-# Minecraft Server Models (Integer RAM direct input supported)
+# Minecraft Server Models (Free Auto Domain vs Premium Domain)
 # ---------------------------------------------------------------------------
 class ServerDeployRequest(BaseModel):
     name: str = Field(..., min_length=2, max_length=64)
-    domain_slug: str = Field(..., pattern=r"^[a-z0-9-]{3,32}$")
+    domain_slug: Optional[str] = None # None이면 무료 자동 도메인 발급
+    is_custom_domain: bool = False # False면 무료 자동 도메인, True면 1,000원 차감
     preset_type: ServerPreset = ServerPreset.SURVIVAL_SMP
     server_type: Union[ServerType, str] = ServerType.PAPER
     mc_version: str = Field(default="26.2")
-    allocated_ram_mb: int = Field(default=4096, ge=1024, le=131072, description="정수로 직접 지정하는 최대 램 용량 (MB 단위, 예: 4096, 6144, 8192, 12288, 16384)")
+    allocated_ram_mb: int = Field(default=4096, ge=1024, le=131072)
     hardware_tier_preference: Optional[str] = "high_nvme"
     preferred_node_id: Optional[str] = None
     target_user_id: Optional[str] = None
-    is_custom_domain: bool = False
     enable_crossplay: bool = True
     enable_zgc: bool = True
+    modpack_id: Optional[str] = None
     modpack_url: Optional[str] = None
 
 class ServerResponse(BaseModel):
@@ -198,6 +199,11 @@ class ServerResponse(BaseModel):
     full_domain: str
     is_local_master: bool = False
 
+class ServerVersionChangeRequest(BaseModel):
+    server_type: str
+    mc_version: str
+    force: bool = False
+
 class ServerControlRequest(BaseModel):
     action: str = Field(..., pattern=r"^(start|stop|restart|kill|backup)$")
 
@@ -205,7 +211,34 @@ class RconExecuteRequest(BaseModel):
     command: str = Field(..., max_length=256)
 
 # ---------------------------------------------------------------------------
-# File Explorer & Config Editor Models
+# server.properties GUI Model
+# ---------------------------------------------------------------------------
+class ServerPropertiesModel(BaseModel):
+    server_port: int = 25565
+    gamemode: str = "survival"
+    difficulty: str = "easy"
+    pvp: bool = True
+    max_players: int = 20
+    motd: str = "A NextGen MC Cloud Hosted Server"
+    online_mode: bool = True
+    enable_rcon: bool = True
+    view_distance: int = 10
+    simulation_distance: int = 8
+    allow_flight: bool = False
+    spawn_protection: int = 16
+    white_list: bool = False
+    enforce_whitelist: bool = False
+    hardcore: bool = False
+    spawn_monsters: bool = True
+    spawn_animals: bool = True
+    spawn_npcs: bool = True
+    allow_nether: bool = True
+    generate_structures: bool = True
+    level_seed: str = ""
+    extra_properties: Dict[str, str] = Field(default_factory=dict)
+
+# ---------------------------------------------------------------------------
+# File Explorer Models
 # ---------------------------------------------------------------------------
 class FileItem(BaseModel):
     name: str
@@ -226,7 +259,7 @@ class FileContentSave(BaseModel):
     content: str
 
 # ---------------------------------------------------------------------------
-# Modrinth & CurseForge Mod Marketplace Models (Prism Launcher Style)
+# Modrinth & CurseForge Mod Marketplace Models
 # ---------------------------------------------------------------------------
 class ModSearchItem(BaseModel):
     id: str
@@ -237,11 +270,14 @@ class ModSearchItem(BaseModel):
     icon_url: Optional[str] = None
     downloads: int = 0
     follows: int = 0
-    project_type: str = "mod"
+    project_type: str = "mod" # "mod" or "modpack"
     loaders: List[str] = Field(default_factory=list)
     game_versions: List[str] = Field(default_factory=list)
     categories: List[str] = Field(default_factory=list)
-    source: str = "modrinth"
+    source: str = "modrinth" # "modrinth" or "curseforge"
+    installed_version: Optional[str] = None
+    latest_version: Optional[str] = None
+    has_update: bool = False
 
 class ModDetailResponse(BaseModel):
     id: str
@@ -256,6 +292,7 @@ class ModDetailResponse(BaseModel):
     loaders: List[str]
     game_versions: List[str]
     project_type: str
+    source: str = "modrinth"
     download_url: Optional[str] = None
     filename: Optional[str] = None
 
@@ -263,8 +300,22 @@ class ModInstallRequest(BaseModel):
     mod_id: str
     version_id: Optional[str] = None
     project_type: str = "mod"
+    source: str = "modrinth"
     download_url: Optional[str] = None
     filename: Optional[str] = None
+
+class InstalledModItem(BaseModel):
+    id: str
+    filename: str
+    title: str
+    current_version: str
+    latest_version: str
+    has_update: bool
+    source: str
+    project_type: str
+
+class ModUpdateRequest(BaseModel):
+    mod_ids: List[str] = Field(default_factory=list) # 빈 리스트면 전체 업데이트
 
 # ---------------------------------------------------------------------------
 # Telemetry & Billing Models
