@@ -28,6 +28,12 @@ class ServerStatus(str, Enum):
     PROVISIONING = "PROVISIONING"
     ERROR = "ERROR"
 
+class TicketStatus(str, Enum):
+    OPEN = "OPEN"
+    IN_PROGRESS = "IN_PROGRESS"
+    RESOLVED = "RESOLVED"
+    CLOSED = "CLOSED"
+
 # ---------------------------------------------------------------------------
 # Dynamic Billing Configuration (어드민 동적 과금 요율 설정)
 # ---------------------------------------------------------------------------
@@ -58,7 +64,7 @@ class NodeMultiplierUpdate(BaseModel):
     custom_multiplier: float = Field(..., ge=0.1, le=10.0)
 
 # ---------------------------------------------------------------------------
-# User & Auth Models (19세 이상 법정 연령 확인 필수)
+# User & Admin Account Management Models
 # ---------------------------------------------------------------------------
 class UserRegisterRequest(BaseModel):
     email: EmailStr
@@ -73,8 +79,14 @@ class UserResponse(BaseModel):
     id: str
     email: str
     is_adult_verified: bool
+    status: str = "ACTIVE"
     created_at: datetime = Field(default_factory=datetime.utcnow)
     balance_krw: float = 0.0
+
+class AdminCreditAdjustRequest(BaseModel):
+    user_id: str
+    amount_krw: float
+    reason: str = "어드민 직접 조정 / 보상 지급"
 
 # ---------------------------------------------------------------------------
 # Node & Cluster Scheduling Models (차등 과금 및 자원 가용성)
@@ -103,7 +115,7 @@ class NodeHealthReport(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 # ---------------------------------------------------------------------------
-# Minecraft Server Models
+# Minecraft Server Models (User & Admin Force Provisioning)
 # ---------------------------------------------------------------------------
 class ServerDeployRequest(BaseModel):
     name: str = Field(..., min_length=3, max_length=32)
@@ -113,6 +125,7 @@ class ServerDeployRequest(BaseModel):
     allocated_ram_mb: int = Field(default=4096, ge=2048, le=32768)
     hardware_tier_preference: Optional[HardwareTier] = HardwareTier.HIGH_NVME
     preferred_node_id: Optional[str] = None
+    target_user_id: Optional[str] = None # 어드민 생성 시 대상 유저 지정
     enable_crossplay: bool = True
     enable_zgc: bool = True
     modpack_url: Optional[str] = None
@@ -159,7 +172,7 @@ class CreditTopupRequest(BaseModel):
     payment_key: str
 
 # ---------------------------------------------------------------------------
-# AI Diagnostics & Support Ticket Models
+# AI Diagnostics & Helpdesk Ticket Management (민원 처리)
 # ---------------------------------------------------------------------------
 class AIReportResponse(BaseModel):
     server_id: str
@@ -168,9 +181,27 @@ class AIReportResponse(BaseModel):
     actionable_steps: List[str]
     requires_admin_ticket: bool
 
+class HelpdeskTicket(BaseModel):
+    id: str
+    server_id: str
+    user_email: str
+    title: str
+    user_message: str
+    status: TicketStatus = TicketStatus.OPEN
+    admin_response: Optional[str] = None
+    ai_report_json: Optional[Dict[str, Any]] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    resolved_at: Optional[datetime] = None
+
 class HelpdeskTicketCreate(BaseModel):
     server_id: str
+    user_email: str = "user@domain.com"
     title: str
     user_message: str
     ai_report_json: Optional[Dict[str, Any]] = None
     system_log_snippet: Optional[str] = None
+
+class TicketResolveRequest(BaseModel):
+    ticket_id: str
+    status: TicketStatus
+    admin_response: str
