@@ -1,5 +1,7 @@
 """
 schema.py - Pydantic Request/Response Models and Enums (Pydantic v2 Compatible)
+Supported Minecraft Versions: Exactly 3 Versions ("1.20.4", "1.20.2", "1.16.5")
+Supported Presets: Creative Builder, Survival SMP, Custom Advanced
 """
 from enum import Enum
 from typing import List, Optional, Dict, Any
@@ -18,8 +20,17 @@ class ServerType(str, Enum):
     PAPER = "PAPER"
     FABRIC = "FABRIC"
     NEOFORGE = "NEOFORGE"
-    FORGE = "FORGE"
     PURPUR = "PURPUR"
+
+class ServerPreset(str, Enum):
+    BUILDER_FLAT = "BUILDER_FLAT"       # 건축 서버 (평지, 월드에딧, 최적화 플러그인)
+    SURVIVAL_SMP = "SURVIVAL_SMP"       # 야생 서버 (야생맵, TPA/Home 플러그인, 최적화 플러그인)
+    ADVANCED_CUSTOM = "ADVANCED_CUSTOM" # 고급 사용자 맞춤 개설
+
+class SupportedMCVersion(str, Enum):
+    V_1_20_4 = "1.20.4"
+    V_1_20_2 = "1.20.2"
+    V_1_16_5 = "1.16.5"
 
 class ServerStatus(str, Enum):
     RUNNING = "RUNNING"
@@ -35,7 +46,7 @@ class TicketStatus(str, Enum):
     CLOSED = "CLOSED"
 
 # ---------------------------------------------------------------------------
-# Dynamic Billing Configuration (어드민 동적 과금 요율 설정)
+# Dynamic Billing Configuration
 # ---------------------------------------------------------------------------
 class BillingRateConfig(BaseModel):
     base_container_per_min: float = Field(
@@ -89,7 +100,7 @@ class AdminCreditAdjustRequest(BaseModel):
     reason: str = "어드민 직접 조정 / 보상 지급"
 
 # ---------------------------------------------------------------------------
-# Node & Cluster Scheduling Models (차등 과금 및 자원 가용성)
+# Node & Cluster Scheduling Models
 # ---------------------------------------------------------------------------
 class NodeRegisterRequest(BaseModel):
     node_id: str
@@ -115,17 +126,18 @@ class NodeHealthReport(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 # ---------------------------------------------------------------------------
-# Minecraft Server Models (User & Admin Force Provisioning)
+# Minecraft Server Models (3 Presets & Exact 3 Versions)
 # ---------------------------------------------------------------------------
 class ServerDeployRequest(BaseModel):
-    name: str = Field(..., min_length=3, max_length=32)
+    name: str = Field(..., min_length=2, max_length=32)
     domain_slug: str = Field(..., pattern=r"^[a-z0-9-]{3,32}$")
+    preset_type: ServerPreset = ServerPreset.SURVIVAL_SMP
     server_type: ServerType = ServerType.PAPER
-    mc_version: str = "1.20.4"
+    mc_version: SupportedMCVersion = SupportedMCVersion.V_1_20_4
     allocated_ram_mb: int = Field(default=4096, ge=2048, le=32768)
     hardware_tier_preference: Optional[HardwareTier] = HardwareTier.HIGH_NVME
     preferred_node_id: Optional[str] = None
-    target_user_id: Optional[str] = None # 어드민 생성 시 대상 유저 지정
+    target_user_id: Optional[str] = None
     enable_crossplay: bool = True
     enable_zgc: bool = True
     modpack_url: Optional[str] = None
@@ -134,6 +146,7 @@ class ServerResponse(BaseModel):
     id: str
     name: str
     domain_slug: str
+    preset_type: ServerPreset
     node_id: str
     node_ip: str
     port: int
@@ -172,7 +185,7 @@ class CreditTopupRequest(BaseModel):
     payment_key: str
 
 # ---------------------------------------------------------------------------
-# AI Diagnostics & Helpdesk Ticket Management (민원 처리)
+# AI Diagnostics & Helpdesk Ticket Management
 # ---------------------------------------------------------------------------
 class AIReportResponse(BaseModel):
     server_id: str

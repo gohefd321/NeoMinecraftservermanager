@@ -1,6 +1,9 @@
 """
-servers.py - Minecraft Server Management, Deployment (Master & Worker), RCON, AI Diagnostics & Helpdesk
-Protected by Admin Auth Gateway
+servers.py - Minecraft Server Management with 3 Supported Versions and 3 Server Presets
+Supported Presets:
+1. BUILDER_FLAT (건축: 평지맵, WorldEdit, CoreProtect, 최적화)
+2. SURVIVAL_SMP (야생: 일반맵, EssentialsX TPA/Home, Spark 렉방지)
+3. ADVANCED_CUSTOM (고급: Paper/Fabric/NeoForge, 3대 버전, 세부 RAM)
 """
 import uuid
 import os
@@ -12,7 +15,8 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from app.models.schema import (
     ServerDeployRequest, ServerControlRequest, RconExecuteRequest,
     TelemetryReportPayload, ServerResponse, AIReportResponse, HelpdeskTicket,
-    HelpdeskTicketCreate, TicketResolveRequest, TicketStatus, ServerStatus, ServerType
+    HelpdeskTicketCreate, TicketResolveRequest, TicketStatus, ServerStatus,
+    ServerType, ServerPreset, SupportedMCVersion
 )
 from app.core.security import sanitize_rcon_command, require_admin_auth
 from app.core.database import db
@@ -28,6 +32,7 @@ MOCK_SERVERS: Dict[str, Dict[str, Any]] = {
         "id": "mc-demo-01",
         "name": "야생 생존 알파",
         "domain_slug": "alpha",
+        "preset_type": ServerPreset.SURVIVAL_SMP,
         "node_id": "master-local",
         "node_ip": "127.0.0.1",
         "port": 25565,
@@ -41,6 +46,7 @@ MOCK_SERVERS: Dict[str, Dict[str, Any]] = {
         "full_domain": "alpha.domain.com",
         "is_local_master": True,
         "user_email": "player_steve@gmail.com",
+        "injected_plugins": ["EssentialsX (TPA, Home)", "Chunky", "Spark"],
         "created_at": datetime.utcnow()
     }
 }
@@ -71,7 +77,7 @@ def deploy_local_container(server_data: Dict[str, Any], req: ServerDeployRequest
     swap_mb = int(ram_mb * 1.5)
     rcon_pass = server_data["rcon_password"]
     server_type = req.server_type.value if hasattr(req.server_type, "value") else str(req.server_type)
-    mc_version = req.mc_version
+    mc_version = req.mc_version.value if hasattr(req.mc_version, "value") else str(req.mc_version)
     crossplay = "true" if req.enable_crossplay else "false"
 
     script_path = "/opt/nextgen-mc-platform/scripts/deploy-mc-sandbox.sh"
@@ -94,6 +100,26 @@ def deploy_local_container(server_data: Dict[str, Any], req: ServerDeployRequest
 
 @router.post("/deploy")
 async def deploy_server(req: ServerDeployRequest):
+    """
+    서버 생성 요청 (3가지 프리셋 및 3대 버전 지원)
+    1. BUILDER_FLAT: 평지 맵, 월드에딧, 코어프로텍트 자동 탑재
+    2. SURVIVAL_SMP: 야생 맵, EssentialsX (TPA/Home), Spark 자동 탑재
+    3. ADVANCED_CUSTOM: 고급 커스텀 사용자 정의
+    """
+    # 프리셋별 기본 파라미터 보정
+    injected_plugins = []
+    actual_version = req.mc_version.value if hasattr(req.mc_version, "value") else str(req.mc_version)
+    actual_server_type = req.server_type
+
+    if req.preset_type == ServerPreset.BUILDER_FLAT:
+        actual_server_type = ServerType.PAPER
+        actual_version = "1.20.4"
+        injected_plugins = ["FastAsyncWorldEdit", "CoreProtect", "Chunky", "Spark"]
+    elif req.preset_type == ServerPreset.SURVIVAL_SMP:
+        actual_server_type = ServerType.PAPER
+        actual_version = "1.20.4"
+        injected_plugins = ["EssentialsX (TPA, Spawn, Home)", "Chunky", "Spark"]
+
     assigned_node = scheduler.select_best_node(
         required_ram_mb=req.allocated_ram_mb,
         preferred_tier=req.hardware_tier_preference,
@@ -109,19 +135,21 @@ async def deploy_server(req: ServerDeployRequest):
         "id": server_id,
         "name": req.name,
         "domain_slug": req.domain_slug,
+        "preset_type": req.preset_type,
         "node_id": assigned_node.node_id,
         "node_ip": assigned_node.ip_address,
         "port": assigned_port,
         "rcon_port": rcon_port,
         "rcon_password": rcon_pass,
-        "server_type": req.server_type,
-        "mc_version": req.mc_version,
+        "server_type": actual_server_type,
+        "mc_version": actual_version,
         "allocated_ram_mb": req.allocated_ram_mb,
         "status": ServerStatus.RUNNING,
         "billing_multiplier": assigned_node.billing_multiplier,
         "full_domain": f"{req.domain_slug}.domain.com",
         "is_local_master": assigned_node.is_master_node,
         "user_email": req.target_user_id or "user@domain.com",
+        "injected_plugins": injected_plugins,
         "created_at": datetime.utcnow()
     }
 
@@ -140,12 +168,15 @@ async def deploy_server(req: ServerDeployRequest):
         "status": "success",
         "server_id": server_id,
         "connect_address": f"{req.domain_slug}.domain.com (Port 25565 - No port required)",
+        "preset_type": req.preset_type,
         "assigned_node": assigned_node.node_name,
         "node_id": assigned_node.node_id,
         "is_master_node": assigned_node.is_master_node,
         "hardware_tier": assigned_node.hardware_tier,
         "billing_multiplier": assigned_node.billing_multiplier,
-        "allocated_ram_mb": req.allocated_ram_mb
+        "allocated_ram_mb": req.allocated_ram_mb,
+        "injected_plugins": injected_plugins,
+        "message": f"[{req.preset_type.value}] 프리셋 기반 서버 [{req.name}]가 성공적으로 배포되었습니다."
     }
 
 @router.post("/{server_id}/rcon")
@@ -184,12 +215,10 @@ async def trigger_ai_diagnostic(server_id: str, spark_dump: str = ""):
 # ---------------------------------------------------------------------------
 @router.get("/admin/all", dependencies=[Depends(require_admin_auth)])
 async def get_all_servers_admin():
-    """어드민 대시보드: 클러스터 내 전체 서버 목록 조회 (인증 필수)"""
     return list(MOCK_SERVERS.values())
 
 @router.post("/admin/{server_id}/force-action", dependencies=[Depends(require_admin_auth)])
 async def force_server_action(server_id: str, req: ServerControlRequest):
-    """어드민 대시보드: 특정 서버 강제 시작 / 정지 / 재시작 / 킬 (인증 필수)"""
     if server_id not in MOCK_SERVERS:
         raise HTTPException(status_code=404, detail="서버를 찾을 수 없습니다.")
 
@@ -217,7 +246,6 @@ async def force_server_action(server_id: str, req: ServerControlRequest):
 
 @router.delete("/admin/{server_id}", dependencies=[Depends(require_admin_auth)])
 async def force_destroy_server(server_id: str):
-    """어드민 대시보드: 특정 서버 강제 영구 삭제 (인증 필수)"""
     if server_id not in MOCK_SERVERS:
         raise HTTPException(status_code=404, detail="서버를 찾을 수 없습니다.")
 
@@ -235,7 +263,6 @@ async def force_destroy_server(server_id: str):
 
 @router.get("/admin/tickets", dependencies=[Depends(require_admin_auth)])
 async def get_all_tickets():
-    """어드민 대시보드: 전체 민원/장애접수 티켓 목록 조회 (인증 필수)"""
     return list(MOCK_TICKETS.values())
 
 @router.post("/tickets/create")
@@ -261,7 +288,6 @@ async def create_support_ticket(ticket: HelpdeskTicketCreate):
 
 @router.post("/admin/tickets/resolve", dependencies=[Depends(require_admin_auth)])
 async def resolve_ticket_admin(req: TicketResolveRequest):
-    """어드민 대시보드: 민원 티켓 답변 작성 및 상태 완료 처리 (인증 필수)"""
     if req.ticket_id not in MOCK_TICKETS:
         raise HTTPException(status_code=404, detail="해당 티켓을 찾을 수 없습니다.")
 

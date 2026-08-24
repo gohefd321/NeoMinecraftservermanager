@@ -1,7 +1,7 @@
 """
 main.py - Master Node FastAPI Application Entrypoint
 Includes:
-1. User Client Portal (/) - Google OAuth / 19+ Adult Verification Modal, Server Rental, Credit Wallet, Console
+1. User Client Portal (/) - 3 Presets (Builder Flat, Survival SMP, Advanced) & Exact 3 MC Versions (1.20.4, 1.20.2, 1.16.5)
 2. Protected Admin Center (/admin) - Protected by Master Secret Auth Modal & JWT Gateway
 3. Master-as-Worker Local Container Support
 """
@@ -18,7 +18,7 @@ from app.services.billing_engine import billing_engine
 from app.services.node_scheduler import scheduler
 
 # ==============================================================================
-# 1. 일반 유저 전용 웹 사이트 (회원가입, 구글 로그인, 19세 성인인증, 서버 생성, 지갑)
+# 1. 일반 유저 전용 웹 사이트 (3가지 프리셋 & 3대 마인크래프트 버전)
 # ==============================================================================
 USER_PORTAL_HTML = """<!DOCTYPE html>
 <html lang="ko">
@@ -33,6 +33,8 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
         .glass-card { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.08); }
         .gradient-btn { background: linear-gradient(135deg, #4f46e5, #6366f1); }
         .gradient-text { background: linear-gradient(135deg, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .preset-card { transition: all 0.2s ease; cursor: pointer; border: 2px solid transparent; }
+        .preset-card.active { border-color: #6366f1; background: rgba(99, 102, 241, 0.15); }
     </style>
 </head>
 <body class="p-4 md:p-8 max-w-6xl mx-auto space-y-8">
@@ -43,7 +45,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                 <h1 class="text-xl font-extrabold text-white tracking-tight flex items-center gap-2">
                     NextGen MC <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-900/60 text-indigo-300 border border-indigo-500/30 uppercase">Cloud</span>
                 </h1>
-                <p class="text-[11px] text-slate-400">초저지연 실시간 종량제 마인크래프트 서버 호스팅</p>
+                <p class="text-[11px] text-slate-400">초저지연 실시간 종량제 마인크래프트 서버 호스팅 (1.20.4 / 1.20.2 / 1.16.5)</p>
             </div>
         </div>
 
@@ -79,13 +81,13 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
     <div class="glass-card rounded-3xl p-6 md:p-10 bg-gradient-to-r from-indigo-950/40 via-slate-900 to-slate-900 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-2xl">
         <div class="space-y-3 max-w-xl">
             <span class="px-3 py-1 rounded-full text-[11px] font-black bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 uppercase tracking-wider">
-                ⚡ Zero-Port L4 Ingress & Generational ZGC
+                ⚡ 3대 원클릭 프리셋 (건축 평지 • 야생 생존 • 고급 커스텀)
             </span>
             <h2 class="text-3xl md:text-4xl font-black text-white leading-tight">
-                나만의 마인크래프트 서버를<br><span class="gradient-text">1분 만에 클라우드에 배포하세요</span>
+                원하는 플레이 스타일에 맞춰<br><span class="gradient-text">1초 만에 서버를 개설하세요</span>
             </h2>
             <p class="text-xs md:text-sm text-slate-400 leading-relaxed">
-                포트 번호 없이 <strong>myserver.domain.com</strong>으로 접속되는 스마트 라우팅, 실시간 종량제 과금(Pay-as-you-go), 그리고 AI 렉 진단 파이프라인을 지원합니다.
+                복잡한 포트 설정 없이 <strong>id.domain.com</strong>으로 즉시 접속되는 Velocity 스마트 라우팅 및 검증된 3개 버전(1.20.4, 1.20.2, 1.16.5)을 제공합니다.
             </p>
         </div>
         <button onclick="handleStartDeploy()" class="gradient-btn px-7 py-4 rounded-2xl font-black text-sm text-white shadow-xl shadow-indigo-600/40 hover:scale-105 transition whitespace-nowrap">
@@ -102,7 +104,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
             <div id="emptyState" class="md:col-span-2 glass-card rounded-2xl p-12 text-center space-y-3">
                 <div class="text-4xl">🕹️</div>
                 <p class="text-sm font-semibold text-slate-300">아직 생성된 마인크래프트 서버가 없습니다.</p>
-                <p class="text-xs text-slate-500">상단의 [새 서버 생성하기] 버튼을 눌러 첫 서버를 개설하십시오. (신규 가입 시 3,000 KRW 무료 증정)</p>
+                <p class="text-xs text-slate-500">상단의 [새 서버 생성하기] 버튼을 눌러 건축, 야생, 또는 고급 서버를 개설하십시오. (신규 가입 3,000원 지원)</p>
             </div>
         </div>
     </div>
@@ -128,7 +130,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                         <input type="checkbox" id="adult_agree" required class="mt-0.5 rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-0">
                         <span class="text-slate-200 text-[11px] leading-relaxed">
                             <strong>[필수] 만 19세 이상 법정 성인 확인 및 약관 동의</strong><br>
-                            <span class="text-slate-400 text-[10px]">대한민국 청소년 보호법 및 서비스 이용약관에 따라 만 19세 이상 성인에 한하여 서버 호스팅 서비스 및 결제 이용이 가능합니다.</span>
+                            <span class="text-slate-400 text-[10px]">청소년 보호법 및 서비스 이용약관에 따라 만 19세 이상 성인에 한하여 서버 개설 및 호스팅 이용이 가능합니다.</span>
                         </span>
                     </label>
                 </div>
@@ -140,64 +142,107 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- Create Modal -->
+    <!-- Create Server Modal with 3 Presets -->
     <div id="createModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 z-50">
-        <div class="glass-card max-w-lg w-full rounded-2xl p-6 md:p-8 space-y-5 shadow-2xl">
+        <div class="glass-card max-w-2xl w-full rounded-2xl p-6 md:p-8 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h4 class="font-bold text-base text-white">✨ 새 마인크래프트 서버 개설</h4>
-                <button onclick="closeCreateModal()" class="text-slate-400 hover:text-white text-xl">&times;</button>
+                <div>
+                    <h4 class="font-bold text-base text-white">✨ 마인크래프트 서버 개설 마법사</h4>
+                    <p class="text-[11px] text-slate-400">목적에 맞는 프리셋을 선택하고 즉시 서버를 시작하세요.</p>
+                </div>
+                <button onclick="closeCreateModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
+            </div>
+
+            <!-- 3 Presets Selection Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div onclick="selectPreset('BUILDER_FLAT')" id="preset_BUILDER_FLAT" class="preset-card glass-card p-4 rounded-xl space-y-2">
+                    <div class="text-2xl">🏰</div>
+                    <div class="font-bold text-white text-xs">심플 건축 서버</div>
+                    <p class="text-[10px] text-slate-400 leading-tight">평지 맵 + WorldEdit + CoreProtect 최적화 자동 세팅 (1.20.4)</p>
+                    <span class="inline-block text-[9px] px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 font-semibold">초간편 원클릭</span>
+                </div>
+
+                <div onclick="selectPreset('SURVIVAL_SMP')" id="preset_SURVIVAL_SMP" class="preset-card active glass-card p-4 rounded-xl space-y-2">
+                    <div class="text-2xl">🌲</div>
+                    <div class="font-bold text-white text-xs">심플 야생 서버</div>
+                    <p class="text-[10px] text-slate-400 leading-tight">야생 맵 + EssentialsX (TPA/Home) + Spark 렉방지 (1.20.4)</p>
+                    <span class="inline-block text-[9px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 font-semibold">인기 추천</span>
+                </div>
+
+                <div onclick="selectPreset('ADVANCED_CUSTOM')" id="preset_ADVANCED_CUSTOM" class="preset-card glass-card p-4 rounded-xl space-y-2">
+                    <div class="text-2xl">⚙️</div>
+                    <div class="font-bold text-white text-xs">고급 서버 개설</div>
+                    <p class="text-[10px] text-slate-400 leading-tight">Paper/Fabric/NeoForge 코어, 3대 버전, RAM 커스텀 선택</p>
+                    <span class="inline-block text-[9px] px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 font-semibold">전문가용</span>
+                </div>
             </div>
 
             <form id="createForm" class="space-y-4 text-xs">
-                <div>
-                    <label class="block font-semibold text-slate-300 mb-1">서버 명칭</label>
-                    <input type="text" id="srv_name" required placeholder="예: 야생 생존 서버" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500">
-                </div>
-                <div>
-                    <label class="block font-semibold text-slate-300 mb-1">인게임 접속 서브도메인 (id.domain.com)</label>
-                    <div class="flex items-center gap-2">
-                        <input type="text" id="srv_slug" required pattern="^[a-z0-9-]{3,32}$" placeholder="예: myworld" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500 font-mono">
-                        <span class="text-slate-400 font-mono">.domain.com</span>
-                    </div>
-                </div>
-                <div class="grid grid-cols-2 gap-3">
+                <input type="hidden" id="selected_preset" value="SURVIVAL_SMP">
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
-                        <label class="block font-semibold text-slate-300 mb-1">서버 코어</label>
-                        <select id="srv_type" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500">
-                            <option value="PAPER">Paper</option>
-                            <option value="FABRIC">Fabric</option>
-                            <option value="NEOFORGE">NeoForge</option>
-                        </select>
+                        <label class="block font-semibold text-slate-300 mb-1">서버 명칭</label>
+                        <input type="text" id="srv_name" required placeholder="예: 우리들의 야생 서버" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500">
                     </div>
                     <div>
-                        <label class="block font-semibold text-slate-300 mb-1">버전</label>
-                        <select id="srv_version" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none font-mono">
-                            <option value="1.20.4">1.20.4</option>
-                            <option value="1.20.2">1.20.2</option>
-                            <option value="1.19.4">1.19.4</option>
-                        </select>
+                        <label class="block font-semibold text-slate-300 mb-1">접속 도메인 (id.domain.com)</label>
+                        <div class="flex items-center gap-1">
+                            <input type="text" id="srv_slug" required pattern="^[a-z0-9-]{3,32}$" placeholder="예: myworld" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500 font-mono">
+                            <span class="text-slate-400 font-mono text-[11px]">.domain.com</span>
+                        </div>
                     </div>
                 </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block font-semibold text-slate-300 mb-1">할당 RAM</label>
-                        <select id="srv_ram" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none">
-                            <option value="4096">4 GB RAM</option>
-                            <option value="6144">6 GB RAM</option>
-                            <option value="8192">8 GB RAM</option>
-                        </select>
+
+                <!-- Advanced Options Container (Visible only when ADVANCED_CUSTOM is active) -->
+                <div id="advancedOptions" class="hidden p-4 bg-slate-900/90 rounded-xl border border-indigo-500/30 space-y-3">
+                    <span class="font-bold text-indigo-300 text-xs flex items-center gap-1">⚙️ 고급 커스텀 환경설정</span>
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block font-semibold text-slate-300 mb-1">서버 코어</label>
+                            <select id="srv_type" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 outline-none">
+                                <option value="PAPER">Paper (플러그인 최적화)</option>
+                                <option value="FABRIC">Fabric (경량 모드팩)</option>
+                                <option value="NEOFORGE">NeoForge (대형 모드팩)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block font-semibold text-slate-300 mb-1">마인크래프트 버전 (3대 안정화 버전)</label>
+                            <select id="srv_version" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 font-mono outline-none">
+                                <option value="1.20.4" selected>1.20.4 (최신 안정화 LTS 권장)</option>
+                                <option value="1.20.2">1.20.2 (안정화 릴리즈)</option>
+                                <option value="1.16.5">1.16.5 (클래식 모드팩/플러그인 표준)</option>
+                            </select>
+                        </div>
                     </div>
-                    <div>
-                        <label class="block font-semibold text-slate-300 mb-1">하드웨어 티어</label>
-                        <select id="srv_tier" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none">
-                            <option value="high_nvme" selected>고성능 NVMe (1.3x)</option>
-                            <option value="standard_ssd">표준 SSD (1.0x)</option>
-                        </select>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block font-semibold text-slate-300 mb-1">할당 RAM 용량</label>
+                            <select id="srv_ram" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 outline-none font-mono">
+                                <option value="4096" selected>4 GB RAM (기본)</option>
+                                <option value="6144">6 GB RAM</option>
+                                <option value="8192">8 GB RAM (대형 서버)</option>
+                                <option value="16384">16 GB RAM (극대형 모드팩)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block font-semibold text-slate-300 mb-1">하드웨어 스토리지 티어</label>
+                            <select id="srv_tier" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 outline-none">
+                                <option value="high_nvme" selected>고성능 NVMe (1.3x 배율)</option>
+                                <option value="standard_ssd">표준 SSD (1.0x 배율)</option>
+                                <option value="extreme_dedicated">단독 전용 Extreme (1.8x 배율)</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
-                <div class="pt-3 flex justify-end gap-2">
-                    <button type="button" onclick="closeCreateModal()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300">취소</button>
-                    <button type="submit" id="deployBtn" class="gradient-btn px-5 py-2 rounded-xl text-white font-bold">배포 시작</button>
+
+                <div class="pt-3 flex justify-end gap-2 border-t border-slate-800">
+                    <button type="button" onclick="closeCreateModal()" class="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 font-semibold">취소</button>
+                    <button type="submit" id="deployBtn" class="gradient-btn px-6 py-2.5 rounded-xl text-white font-extrabold shadow-lg shadow-indigo-600/30">
+                        🚀 서버 즉시 배포
+                    </button>
                 </div>
             </form>
         </div>
@@ -253,6 +298,21 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
             updateAuthState();
         }
 
+        function selectPreset(preset) {
+            document.getElementById('selected_preset').value = preset;
+            ['BUILDER_FLAT', 'SURVIVAL_SMP', 'ADVANCED_CUSTOM'].forEach(p => {
+                document.getElementById('preset_' + p).classList.remove('active');
+            });
+            document.getElementById('preset_' + preset).classList.add('active');
+
+            const advBox = document.getElementById('advancedOptions');
+            if (preset === 'ADVANCED_CUSTOM') {
+                advBox.classList.remove('hidden');
+            } else {
+                advBox.classList.add('hidden');
+            }
+        }
+
         document.getElementById('authForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const email = document.getElementById('login_email').value;
@@ -302,15 +362,25 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
             btn.disabled = true;
             btn.innerText = '프로비저닝 중...';
 
-            const payload = {
+            const preset = document.getElementById('selected_preset').value;
+            let payload = {
                 name: document.getElementById('srv_name').value,
                 domain_slug: document.getElementById('srv_slug').value,
-                server_type: document.getElementById('srv_type').value,
-                mc_version: document.getElementById('srv_version').value,
-                allocated_ram_mb: parseInt(document.getElementById('srv_ram').value),
-                hardware_tier_preference: document.getElementById('srv_tier').value,
+                preset_type: preset,
                 target_user_id: currentUser ? currentUser.email : "user@domain.com"
             };
+
+            if (preset === 'ADVANCED_CUSTOM') {
+                payload.server_type = document.getElementById('srv_type').value;
+                payload.mc_version = document.getElementById('srv_version').value;
+                payload.allocated_ram_mb = parseInt(document.getElementById('srv_ram').value);
+                payload.hardware_tier_preference = document.getElementById('srv_tier').value;
+            } else {
+                payload.server_type = "PAPER";
+                payload.mc_version = "1.20.4";
+                payload.allocated_ram_mb = 4096;
+                payload.hardware_tier_preference = "high_nvme";
+            }
 
             try {
                 const resp = await fetch('/api/v1/servers/deploy', {
@@ -320,14 +390,17 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                 });
                 const res = await resp.json();
                 if (resp.ok) {
-                    alert(`🎉 서버 [${payload.name}] 배포 성공!\\n접속 주소: ${res.connect_address}`);
+                    alert(`🎉 [${preset}] 서버 [${payload.name}] 개설 완료!\\n접속 주소: ${res.connect_address}\\n탑재 플러그인: ${(res.injected_plugins || []).join(', ')}`);
                     myServers.push({
                         id: res.server_id,
                         name: payload.name,
+                        preset: preset,
                         address: res.connect_address,
                         type: payload.server_type,
+                        version: payload.mc_version,
                         ram: payload.allocated_ram_mb,
                         node: res.assigned_node,
+                        plugins: res.injected_plugins || [],
                         status: 'RUNNING'
                     });
                     renderServers();
@@ -336,7 +409,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                     alert('배포 실패: ' + (res.detail || '오류'));
                 }
             } catch (err) { alert('오류: ' + err.message); }
-            finally { btn.disabled = false; btn.innerText = '배포 시작'; }
+            finally { btn.disabled = false; btn.innerText = '🚀 서버 즉시 배포'; }
         });
 
         function renderServers() {
@@ -351,25 +424,41 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
             myServers.forEach(srv => {
                 const card = document.createElement('div');
                 card.className = 'glass-card rounded-2xl p-5 space-y-4 border border-indigo-500/20';
+                
+                let presetBadge = '<span class="px-2 py-0.5 bg-indigo-950 text-indigo-300 rounded text-[10px] font-bold">🏰 심플 건축 (평지)</span>';
+                if (srv.preset === 'SURVIVAL_SMP') {
+                    presetBadge = '<span class="px-2 py-0.5 bg-emerald-950 text-emerald-300 rounded text-[10px] font-bold">🌲 심플 야생 (SMP)</span>';
+                } else if (srv.preset === 'ADVANCED_CUSTOM') {
+                    presetBadge = '<span class="px-2 py-0.5 bg-purple-950 text-purple-300 rounded text-[10px] font-bold">⚙️ 고급 커스텀</span>';
+                }
+
                 card.innerHTML = `
                     <div class="flex items-center justify-between">
                         <div>
                             <span class="font-bold text-base text-white">${srv.name}</span>
-                            <span class="ml-2 text-[11px] font-mono px-2 py-0.5 bg-slate-800 text-slate-300 rounded">${srv.type} (${srv.ram / 1024}GB)</span>
+                            <div class="flex items-center gap-1.5 mt-1">
+                                ${presetBadge}
+                                <span class="text-[10px] font-mono px-2 py-0.5 bg-slate-800 text-slate-300 rounded">${srv.type} ${srv.version} (${srv.ram / 1024}GB)</span>
+                            </div>
                         </div>
                         <span class="px-2.5 py-1 text-xs font-mono font-bold text-emerald-400 bg-emerald-950/80 rounded-full border border-emerald-500/30 flex items-center gap-1.5">
                             <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> ${srv.status}
                         </span>
                     </div>
                     <div class="p-3 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1">
-                        <span class="text-[10px] text-slate-500 font-bold uppercase block">인게임 멀티플레이 접속 주소 (포트 불필요)</span>
+                        <span class="text-[10px] text-slate-500 font-bold uppercase block">인게임 멀티플레이 접속 주소 (포트 번호 불필요)</span>
                         <div class="flex items-center justify-between">
                             <span class="font-mono text-xs text-indigo-300 font-bold">${srv.address}</span>
                             <button onclick="navigator.clipboard.writeText('${srv.address}'); alert('복사되었습니다!');" class="text-[11px] text-slate-400 hover:text-white underline">복사</button>
                         </div>
                     </div>
+                    ${srv.plugins.length > 0 ? `
+                        <div class="text-[10px] text-slate-400 bg-slate-900/60 p-2 rounded-lg">
+                            <strong class="text-slate-300">자동 주입 플러그인:</strong> ${srv.plugins.join(', ')}
+                        </div>
+                    ` : ''}
                     <div class="flex items-center justify-between text-xs pt-2 border-t border-slate-800">
-                        <span class="text-slate-400">노드: <strong class="text-slate-200">${srv.node}</strong></span>
+                        <span class="text-slate-400">배치 노드: <strong class="text-slate-200">${srv.node}</strong></span>
                         <div class="flex gap-2">
                             <button onclick="openRcon('${srv.id}', '${srv.name}')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg">💻 콘솔</button>
                             <button onclick="diagnoseLag('${srv.id}')" class="px-3 py-1.5 bg-indigo-950 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-900 rounded-lg">⚡ AI 렉 진단</button>
@@ -595,11 +684,19 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                     <input type="email" id="adm_user" placeholder="admin@domain.com" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none">
                 </div>
                 <div>
-                    <label class="block font-semibold text-slate-300 mb-1">서버 타입</label>
-                    <select id="adm_type" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none">
-                        <option value="PAPER">Paper</option>
-                        <option value="FABRIC">Fabric</option>
-                        <option value="NEOFORGE">NeoForge</option>
+                    <label class="block font-semibold text-slate-300 mb-1">서버 프리셋</label>
+                    <select id="adm_preset" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none">
+                        <option value="SURVIVAL_SMP">🌲 심플 야생 서버 (SMP)</option>
+                        <option value="BUILDER_FLAT">🏰 심플 건축 서버 (평지)</option>
+                        <option value="ADVANCED_CUSTOM">⚙️ 고급 커스텀 서버</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block font-semibold text-slate-300 mb-1">마인크래프트 버전</label>
+                    <select id="adm_ver" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono outline-none">
+                        <option value="1.20.4" selected>1.20.4 (LTS 권장)</option>
+                        <option value="1.20.2">1.20.2</option>
+                        <option value="1.16.5">1.16.5</option>
                     </select>
                 </div>
                 <div>
@@ -608,13 +705,6 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                         <option value="4096">4 GB</option>
                         <option value="8192" selected>8 GB</option>
                         <option value="16384">16 GB</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block font-semibold text-slate-300 mb-1">배치 노드 지정 (Optional)</label>
-                    <select id="adm_node" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none font-mono">
-                        <option value="">자동 최적 노드 스케줄링</option>
-                        <option value="master-local">Master Node (Local Container)</option>
                     </select>
                 </div>
                 <div class="md:col-span-3 flex justify-end">
@@ -949,7 +1039,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                     <div class="flex justify-between items-center">
                         <div>
                             <span class="font-bold text-white text-sm">${s.name}</span>
-                            <span class="text-[11px] text-slate-400 font-mono ml-2">${s.server_type} (${s.allocated_ram_mb}MB)</span>
+                            <span class="text-[11px] text-slate-400 font-mono ml-2">${s.server_type} ${s.mc_version} (${s.allocated_ram_mb}MB)</span>
                         </div>
                         <span class="px-2 py-0.5 rounded font-mono font-bold ${s.status === 'RUNNING' ? 'bg-emerald-950 text-emerald-400' : 'bg-rose-950 text-rose-400'}">${s.status}</span>
                     </div>
@@ -973,10 +1063,10 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             const payload = {
                 name: document.getElementById('adm_name').value,
                 domain_slug: document.getElementById('adm_slug').value,
-                server_type: document.getElementById('adm_type').value,
-                mc_version: "1.20.4",
+                preset_type: document.getElementById('adm_preset').value,
+                server_type: "PAPER",
+                mc_version: document.getElementById('adm_ver').value,
                 allocated_ram_mb: parseInt(document.getElementById('adm_ram').value),
-                preferred_node_id: document.getElementById('adm_node').value || null,
                 target_user_id: document.getElementById('adm_user').value || null
             };
             const resp = await fetch('/api/v1/servers/deploy', {
@@ -1065,6 +1155,8 @@ async def health_check():
         "status": "healthy",
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
+        "supported_mc_versions": ["1.20.4", "1.20.2", "1.16.5"],
+        "supported_presets": ["BUILDER_FLAT", "SURVIVAL_SMP", "ADVANCED_CUSTOM"],
         "master_as_worker_active": "master-local" in scheduler.nodes
     }
 
