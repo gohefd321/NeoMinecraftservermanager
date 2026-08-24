@@ -1,7 +1,11 @@
 """
 schema.py - Pydantic Request/Response Models and Enums (Pydantic v2 Compatible)
 Supports:
-- Full Server Types: PAPER, FABRIC, FORGE, NEOFORGE, PURPUR, VELOCITY, BUNGEECORD, WATERFALL
+- Comprehensive Server Types:
+  * Mainstream / High Performance: PAPER, PURPUR, FOLIA (Multi-threaded)
+  * Modded: FABRIC, FORGE (Official), NEOFORGE, SPONGE (SpongeVanilla)
+  * Classic & Official: VANILLA (Mojang Official), SPIGOT, CRAFTBUKKIT
+  * Proxies: VELOCITY (L4 Ingress), BUNGEECORD, WATERFALL
 - Mojang Full Version Manifest (Releases + Snapshots)
 - Dynamic Custom Tiers (Node Grouping)
 - Global Memory & Swap Ratio (ZRAM/NVMe) Configuration
@@ -21,11 +25,23 @@ class HardwareTier(str, Enum):
     CUSTOM = "custom"                       # 어드민 생성 커스텀 티어
 
 class ServerType(str, Enum):
+    # 주류 및 최적화
     PAPER = "PAPER"
-    FABRIC = "FABRIC"
-    FORGE = "FORGE"                         # 일반 Forge
-    NEOFORGE = "NEOFORGE"
     PURPUR = "PURPUR"
+    FOLIA = "FOLIA"                         # PaperMC 멀티스레드 리전 기반 차세대 코어
+    FABRIC = "FABRIC"
+    
+    # 대형 모드팩
+    FORGE = "FORGE"                         # 일반 공식 Forge
+    NEOFORGE = "NEOFORGE"
+    SPONGE = "SPONGE"                       # SpongeVanilla / SpongeForge
+
+    # 공식 및 클래식
+    VANILLA = "VANILLA"                     # 모장 공식 바닐라 (스냅샷 완벽 호환)
+    SPIGOT = "SPIGOT"                       # 전통적인 스피곳
+    CRAFTBUKKIT = "CRAFTBUKKIT"             # 클래식 크래프트버킷
+
+    # 프록시 게이트웨이
     VELOCITY = "VELOCITY"                   # Velocity L4 Proxy
     BUNGEECORD = "BUNGEECORD"               # BungeeCord Proxy
     WATERFALL = "WATERFALL"                 # Waterfall Proxy
@@ -33,7 +49,7 @@ class ServerType(str, Enum):
 class ServerPreset(str, Enum):
     BUILDER_FLAT = "BUILDER_FLAT"           # 건축 서버 (평지, 월드에딧, 최적화)
     SURVIVAL_SMP = "SURVIVAL_SMP"           # 야생 서버 (야생맵, TPA/Home, Spark)
-    ADVANCED_CUSTOM = "ADVANCED_CUSTOM"     # 고급 커스텀 서버 (모든 버전/코어/프록시)
+    ADVANCED_CUSTOM = "ADVANCED_CUSTOM"     # 고급 커스텀 서버 (모든 구동기 및 스냅샷)
     PROXY_NETWORK = "PROXY_NETWORK"         # Velocity / BungeeCord 프록시 게이트웨이
 
 class ServerStatus(str, Enum):
@@ -80,7 +96,7 @@ class SwapConfigModel(BaseModel):
 class BillingRateConfig(BaseModel):
     base_container_per_min: float = Field(default=0.50, ge=0.0, le=100.0)
     per_chunk_rate: float = Field(default=0.0010, ge=0.0, le=1.0)
-    per_player_rate: float = Field(default=0.1000, ge=0.0, le=10.0)
+    per_player_rate: float = Field(default=0.1000, ge=0.0, le=1.0)
     tier_multipliers: Dict[str, float] = Field(default_factory=dict)
 
 class NodeMultiplierUpdate(BaseModel):

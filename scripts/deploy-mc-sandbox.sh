@@ -2,9 +2,11 @@
 # ==============================================================================
 # deploy-mc-sandbox.sh
 # Hardened Sandboxed Minecraft Container & Proxy Deployment Script
-# Supports: PAPER, FABRIC, FORGE (Official), NEOFORGE, VELOCITY (L4 Proxy), BUNGEECORD
-# Security: AppArmor, Seccomp, Cap-Drop ALL, No-New-Privileges, Dynamic Tiered Memory
-# Performance: Java 21 Generational ZGC & Aikar's Flags
+# Supports All Server Cores:
+# - Optimization: PAPER, PURPUR, FOLIA (Multi-threaded Region)
+# - Modded: FABRIC, FORGE (Official), NEOFORGE, SPONGE (SpongeVanilla)
+# - Official & Classic: VANILLA (Mojang Official with Snapshot support), SPIGOT, CRAFTBUKKIT
+# - Proxies: VELOCITY (L4 Ingress Proxy), BUNGEECORD, WATERFALL
 # ==============================================================================
 set -euo pipefail
 
@@ -13,7 +15,7 @@ HOST_PORT="${2:-25565}"
 RCON_PORT="${3:-25575}"
 RAM_MB="${4:-4096}"
 SWAP_TOTAL_MB="${5:-6144}"
-SERVER_TYPE="${6:-PAPER}" # PAPER, FABRIC, FORGE, NEOFORGE, VELOCITY, BUNGEECORD
+SERVER_TYPE="${6:-PAPER}"
 MC_VERSION="${7:-1.20.4}"
 RCON_PASS="${8:-SafeRconKey999!}"
 ENABLE_CROSSPLAY="${9:-false}"
@@ -44,17 +46,39 @@ JVM_FLAGS=(
     "-Dcom.mojang.eula.agree=true"
 )
 
+# Folia 또는 Sponge 특수 JVM 옵션
+if [ "${SERVER_TYPE}" = "FOLIA" ]; then
+    JVM_FLAGS+=("-Dpaper.use-optimized-compact=true")
+fi
+
 JVM_OPTS_STR="${JVM_FLAGS[*]}"
 
 # 2. 크로스플레이 헬퍼 (Geyser / Floodgate / ViaVersion 플러그인 주입)
 EXTRA_ENV_ARGS=()
-if [ "$ENABLE_CROSSPLAY" = "true" ]; then
+if [ "$ENABLE_CROSSPLAY" = "true" ] && [ "${SERVER_TYPE}" != "VANILLA" ]; then
     EXTRA_ENV_ARGS+=(
         "-e" "SPIGET_RESOURCES=24490,27448" # ViaVersion, ViaBackwards
     )
 fi
 
-# 3. Seccomp / AppArmor 설정 존재 여부 체크
+# 3. itzg TYPE 매핑 변환
+ITZG_TYPE="${SERVER_TYPE}"
+case "${SERVER_TYPE}" in
+    SPONGE)
+        ITZG_TYPE="SPONGEVANILLA"
+        ;;
+    BUNGEECORD)
+        ITZG_TYPE="WATERFALL"
+        ;;
+    VANILLA)
+        ITZG_TYPE="VANILLA"
+        ;;
+    *)
+        ITZG_TYPE="${SERVER_TYPE}"
+        ;;
+esac
+
+# 4. Seccomp / AppArmor 설정 존재 여부 체크
 SECCOMP_ARG=()
 if [ -f "/opt/nextgen-mc-platform/security/seccomp/minecraft-seccomp.json" ]; then
     SECCOMP_ARG=("--security-opt" "seccomp=/opt/nextgen-mc-platform/security/seccomp/minecraft-seccomp.json")
@@ -67,10 +91,10 @@ if aa-status --enabled 2>/dev/null; then
     APPARMOR_ARG=("--security-opt" "apparmor=minecraft-secure")
 fi
 
-# 4. 기존 컨테이너 정리
+# 5. 기존 컨테이너 정리
 docker rm -f "${SERVER_ID}" 2>/dev/null || true
 
-# 5. 프록시(Velocity/Bungee) 또는 마인크래프트 게임 서버 분기 배포
+# 6. 프록시(Velocity/Bungee) 또는 게임 서버 분기 배포
 if [ "${SERVER_TYPE}" = "VELOCITY" ] || [ "${SERVER_TYPE}" = "BUNGEECORD" ] || [ "${SERVER_TYPE}" = "WATERFALL" ]; then
     echo "Deploying High-Performance L4 Proxy (${SERVER_TYPE})..."
     docker run -d \
@@ -87,7 +111,7 @@ if [ "${SERVER_TYPE}" = "VELOCITY" ] || [ "${SERVER_TYPE}" = "BUNGEECORD" ] || [
         -p "${HOST_PORT}:25565/tcp" \
         -p "${RCON_PORT}:25575/tcp" \
         -v "${DATA_DIR}:/server:rw" \
-        -e TYPE="${SERVER_TYPE}" \
+        -e TYPE="${ITZG_TYPE}" \
         -e MEMORY="${HEAP_MB}M" \
         -e JVM_OPTS="${JVM_OPTS_STR}" \
         itzg/bungeecord:latest 2>/dev/null || \
@@ -102,7 +126,7 @@ if [ "${SERVER_TYPE}" = "VELOCITY" ] || [ "${SERVER_TYPE}" = "BUNGEECORD" ] || [
         -p "${RCON_PORT}:25575/tcp" \
         -v "${DATA_DIR}:/data:rw" \
         -e EULA=TRUE \
-        -e TYPE="${SERVER_TYPE}" \
+        -e TYPE="${ITZG_TYPE}" \
         -e VERSION="${MC_VERSION}" \
         -e MEMORY="${HEAP_MB}M" \
         itzg/minecraft-server:java21
@@ -123,7 +147,7 @@ else
         -v "${DATA_DIR}:/data:rw" \
         -e EULA=TRUE \
         -e VERSION="${MC_VERSION}" \
-        -e TYPE="${SERVER_TYPE}" \
+        -e TYPE="${ITZG_TYPE}" \
         -e MEMORY="${HEAP_MB}M" \
         -e JVM_OPTS="${JVM_OPTS_STR}" \
         -e RCON_ENABLED=true \
@@ -133,4 +157,4 @@ else
         itzg/minecraft-server:java21
 fi
 
-echo ">>> [SUCCESS] Container ${SERVER_ID} deployed successfully."
+echo ">>> [SUCCESS] Container ${SERVER_ID} (${SERVER_TYPE} ${MC_VERSION}) deployed successfully."

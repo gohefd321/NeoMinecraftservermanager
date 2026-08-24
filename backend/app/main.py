@@ -1,9 +1,14 @@
 """
 main.py - Master Node FastAPI Application Entrypoint
 Features:
-1. User Client Portal (/) - Hidden Admin Link, Full Mojang Version Manifest (Snapshots), Forge, Velocity & BungeeCord
-2. Protected Admin Center (/admin) - Custom Tier Creation (Node Grouping), Global Swap Ratio (ZRAM/NVMe), 401 Auth Gateway
-3. Master-as-Worker Local Container Support
+1. Comprehensive Server Cores:
+   - Optimized: Paper, Purpur, Folia (Multi-threaded)
+   - Modded: Fabric, Forge (Official), NeoForge, Sponge (SpongeVanilla)
+   - Official & Classic: Vanilla (Mojang Official with 100% Snapshot support), Spigot, CraftBukkit
+   - Proxies: Velocity (L4), BungeeCord / Waterfall
+2. Full Mojang Version Manifest (Live Snapshots & Releases)
+3. Hidden Admin Link from User Portal
+4. Custom Tier Creation (Node Grouping) & Swap Configuration in Admin Center
 """
 import asyncio
 import os
@@ -18,7 +23,7 @@ from app.services.billing_engine import billing_engine
 from app.services.node_scheduler import scheduler
 
 # ==============================================================================
-# 1. 일반 유저 전용 웹 사이트 (관리자 링크 비노출, 스냅샷 전체 버전, Forge/Velocity/Bungee)
+# 1. 일반 유저 전용 웹 사이트 (모든 비주류/주류 구동기 및 스냅샷 지원)
 # ==============================================================================
 USER_PORTAL_HTML = """<!DOCTYPE html>
 <html lang="ko">
@@ -45,7 +50,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                 <h1 class="text-xl font-extrabold text-white tracking-tight flex items-center gap-2">
                     NextGen MC <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-900/60 text-indigo-300 border border-indigo-500/30 uppercase">Cloud</span>
                 </h1>
-                <p class="text-[11px] text-slate-400">초저지연 실시간 종량제 마인크래프트 서버 호스팅</p>
+                <p class="text-[11px] text-slate-400">모든 구동기(Paper, Purpur, Folia, Forge, Sponge, 바닐라) 및 스냅샷 지원</p>
             </div>
         </div>
 
@@ -79,13 +84,13 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
     <div class="glass-card rounded-3xl p-6 md:p-10 bg-gradient-to-r from-indigo-950/40 via-slate-900 to-slate-900 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-2xl">
         <div class="space-y-3 max-w-xl">
             <span class="px-3 py-1 rounded-full text-[11px] font-black bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 uppercase tracking-wider">
-                ⚡ 최신 스냅샷 • 일반 Forge • Velocity 프록시 완벽 지원
+                ⚡ Purpur • Folia • Forge • Sponge • 공식 바닐라 스냅샷 지원
             </span>
             <h2 class="text-3xl md:text-4xl font-black text-white leading-tight">
-                원하는 플레이 스타일에 맞춰<br><span class="gradient-text">1초 만에 서버를 개설하세요</span>
+                원하는 모든 서버 구동기로<br><span class="gradient-text">1초 만에 클라우드 서버 배포</span>
             </h2>
             <p class="text-xs md:text-sm text-slate-400 leading-relaxed">
-                포트 번호 없이 <strong>myserver.domain.com</strong>으로 접속되는 스마트 라우팅, 실시간 종량제 과금(Pay-as-you-go), 그리고 AI 렉 진단 파이프라인을 지원합니다.
+                포트 번호 없는 <strong>id.domain.com</strong> 접속, 모장 공식 실시간 스냅샷 및 비주류 고성능 코어까지 완벽 지원합니다.
             </p>
         </div>
         <button onclick="handleStartDeploy()" class="gradient-btn px-7 py-4 rounded-2xl font-black text-sm text-white shadow-xl shadow-indigo-600/40 hover:scale-105 transition whitespace-nowrap">
@@ -146,7 +151,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div>
                     <h4 class="font-bold text-base text-white">✨ 마인크래프트 서버 개설 마법사</h4>
-                    <p class="text-[11px] text-slate-400">목적에 맞는 프리셋을 선택하고 즉시 서버를 시작하세요.</p>
+                    <p class="text-[11px] text-slate-400">목적에 맞는 프리셋을 선택하거나 모든 구동기 및 버전을 자유롭게 설정하세요.</p>
                 </div>
                 <button onclick="closeCreateModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
             </div>
@@ -170,7 +175,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                 <div onclick="selectPreset('ADVANCED_CUSTOM')" id="preset_ADVANCED_CUSTOM" class="preset-card glass-card p-4 rounded-xl space-y-2">
                     <div class="text-2xl">⚙️</div>
                     <div class="font-bold text-white text-xs">고급 서버 개설</div>
-                    <p class="text-[10px] text-slate-400 leading-tight">Forge/Fabric/NeoForge/Velocity, 스냅샷 포함 모든 버전</p>
+                    <p class="text-[10px] text-slate-400 leading-tight">Purpur/Folia/Forge/Sponge/바닐라, 스냅샷 포함 모든 버전</p>
                     <span class="inline-block text-[9px] px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 font-semibold">전문가용</span>
                 </div>
             </div>
@@ -194,18 +199,32 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
 
                 <!-- Advanced Options Container -->
                 <div id="advancedOptions" class="hidden p-4 bg-slate-900/90 rounded-xl border border-indigo-500/30 space-y-3">
-                    <span class="font-bold text-indigo-300 text-xs flex items-center gap-1">⚙️ 고급 커스텀 환경설정</span>
+                    <span class="font-bold text-indigo-300 text-xs flex items-center gap-1">⚙️ 고급 커스텀 환경설정 (구동기 & 스냅샷 버전)</span>
                     
-                    <div class="grid grid-cols-2 gap-3">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
-                            <label class="block font-semibold text-slate-300 mb-1">서버 코어 / 프록시</label>
+                            <label class="block font-semibold text-slate-300 mb-1">서버 코어 (구동기)</label>
                             <select id="srv_type" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 outline-none">
-                                <option value="PAPER">Paper (플러그인 최적화)</option>
-                                <option value="FABRIC">Fabric (경량 모드팩)</option>
-                                <option value="FORGE">Forge (공식 일반 Forge)</option>
-                                <option value="NEOFORGE">NeoForge (대형 모드팩)</option>
-                                <option value="VELOCITY">Velocity (고성능 L4 프록시)</option>
-                                <option value="BUNGEECORD">BungeeCord (클래식 프록시)</option>
+                                <optgroup label="⚡ 최적화 & 대규모 서버 구동기">
+                                    <option value="PAPER" selected>Paper (플러그인 최적화 표준)</option>
+                                    <option value="PURPUR">Purpur (고성능 & 엔티티 커스터마이징)</option>
+                                    <option value="FOLIA">Folia (PaperMC 멀티스레드 분산 코어)</option>
+                                </optgroup>
+                                <optgroup label="🔨 모드팩 구동기 (Modded)">
+                                    <option value="FABRIC">Fabric (경량 모드팩 & 스냅샷 호환)</option>
+                                    <option value="FORGE">Forge (공식 일반 Forge)</option>
+                                    <option value="NEOFORGE">NeoForge (최신 대형 네오포지)</option>
+                                    <option value="SPONGE">Sponge (SpongeVanilla 프레임워크)</option>
+                                </optgroup>
+                                <optgroup label="🏛️ 공식 바닐라 & 클래식">
+                                    <option value="VANILLA">마인크래프트 공식 바닐라 (스냅샷 100% 지원)</option>
+                                    <option value="SPIGOT">Spigot (전통 표준 플러그인)</option>
+                                    <option value="CRAFTBUKKIT">CraftBukkit (클래식 버킷)</option>
+                                </optgroup>
+                                <optgroup label="🌐 네트워크 프록시 (Proxies)">
+                                    <option value="VELOCITY">Velocity (차세대 초고속 L4 프록시)</option>
+                                    <option value="BUNGEECORD">BungeeCord / Waterfall (클래식 프록시)</option>
+                                </optgroup>
                             </select>
                         </div>
                         <div>
@@ -495,7 +514,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                 if (srv.preset === 'SURVIVAL_SMP') {
                     presetBadge = '<span class="px-2 py-0.5 bg-emerald-950 text-emerald-300 rounded text-[10px] font-bold">🌲 심플 야생 (SMP)</span>';
                 } else if (srv.preset === 'ADVANCED_CUSTOM') {
-                    presetBadge = '<span class="px-2 py-0.5 bg-purple-950 text-purple-300 rounded text-[10px] font-bold">⚙️ 고급 ' + srv.type + '</span>';
+                    presetBadge = '<span class="px-2 py-0.5 bg-purple-950 text-purple-300 rounded text-[10px] font-bold">⚙️ ' + srv.type + '</span>';
                 }
 
                 card.innerHTML = `
@@ -573,7 +592,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
 </html>"""
 
 # ==============================================================================
-# 2. 어드민 전용 통합 제어 센터 UI (커스텀 티어 생성, 스왑 비율 설정 탑재)
+# 2. 어드민 전용 통합 제어 센터 UI (전체 구동기 지원)
 # ==============================================================================
 ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
 <html lang="ko">
@@ -834,18 +853,24 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                     <input type="email" id="adm_user" placeholder="admin@domain.com" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none">
                 </div>
                 <div>
-                    <label class="block font-semibold text-slate-300 mb-1">서버 코어</label>
+                    <label class="block font-semibold text-slate-300 mb-1">서버 구동기</label>
                     <select id="adm_core" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none">
                         <option value="PAPER">Paper</option>
+                        <option value="PURPUR">Purpur</option>
+                        <option value="FOLIA">Folia (멀티스레드)</option>
                         <option value="FABRIC">Fabric</option>
                         <option value="FORGE">Forge (일반 Forge)</option>
                         <option value="NEOFORGE">NeoForge</option>
+                        <option value="SPONGE">Sponge</option>
+                        <option value="VANILLA">마인크래프트 공식 바닐라</option>
+                        <option value="SPIGOT">Spigot</option>
+                        <option value="CRAFTBUKKIT">CraftBukkit</option>
                         <option value="VELOCITY">Velocity (프록시)</option>
                         <option value="BUNGEECORD">BungeeCord (프록시)</option>
                     </select>
                 </div>
                 <div>
-                    <label class="block font-semibold text-slate-300 mb-1">마인크래프트 버전</label>
+                    <label class="block font-semibold text-slate-300 mb-1">마인크래프트 버전 (스냅샷 가능)</label>
                     <input type="text" id="adm_ver" value="1.20.4" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono outline-none">
                 </div>
                 <div>
@@ -1393,7 +1418,11 @@ async def health_check():
         "status": "healthy",
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
-        "supported_server_types": ["PAPER", "FABRIC", "FORGE", "NEOFORGE", "PURPUR", "VELOCITY", "BUNGEECORD"],
+        "supported_server_types": [
+            "PAPER", "PURPUR", "FOLIA", "FABRIC", "FORGE",
+            "NEOFORGE", "SPONGE", "VANILLA", "SPIGOT", "CRAFTBUKKIT",
+            "VELOCITY", "BUNGEECORD"
+        ],
         "master_as_worker_active": "master-local" in scheduler.nodes
     }
 
