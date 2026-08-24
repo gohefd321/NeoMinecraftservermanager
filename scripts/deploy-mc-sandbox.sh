@@ -20,6 +20,13 @@ MC_VERSION="${7:-26.2}"
 RCON_PASS="${8:-SafeRconKey999!}"
 ENABLE_CROSSPLAY="${9:-false}"
 CPU_CORES="${10:-2}"
+CPUSET_CPUS="${11:-}"
+
+# CPU Pinning 옵션 처리 (지정된 경우에만 cpuset-cpus 전달)
+CPUSET_DOCKER_ARG=()
+if [ -n "${CPUSET_CPUS}" ]; then
+    CPUSET_DOCKER_ARG=(--cpuset-cpus="${CPUSET_CPUS}")
+fi
 
 # 데이터 저장 디렉토리 생성 (권한 실패 시 fallback)
 DATA_DIR="/var/mc_servers/${SERVER_ID}"
@@ -100,7 +107,7 @@ docker rm -f "${SERVER_ID}" 2>/dev/null || true
 
 # 6. 프록시(Velocity/Bungee) 또는 게임 서버 분기 배포
 if [ "${SERVER_TYPE}" = "VELOCITY" ] || [ "${SERVER_TYPE}" = "BUNGEECORD" ] || [ "${SERVER_TYPE}" = "WATERFALL" ]; then
-    echo "Deploying High-Performance L4 Proxy (${SERVER_TYPE}) with ${CPU_CORES} vCPUs..."
+    echo "Deploying High-Performance L4 Proxy (${SERVER_TYPE}) with ${CPU_CORES} vCPUs (Pinning: ${CPUSET_CPUS:-All})..."
     docker run -d \
         --name "${SERVER_ID}" \
         --restart unless-stopped \
@@ -108,6 +115,7 @@ if [ "${SERVER_TYPE}" = "VELOCITY" ] || [ "${SERVER_TYPE}" = "BUNGEECORD" ] || [
         --memory-swap="${SWAP_TOTAL_MB}m" \
         --oom-kill-disable \
         --cpus="${CPU_CORES}" \
+        "${CPUSET_DOCKER_ARG[@]}" \
         --cap-drop=ALL \
         --security-opt no-new-privileges:true \
         "${APPARMOR_ARG[@]}" \
@@ -126,6 +134,7 @@ if [ "${SERVER_TYPE}" = "VELOCITY" ] || [ "${SERVER_TYPE}" = "BUNGEECORD" ] || [
         --memory-swap="${SWAP_TOTAL_MB}m" \
         --oom-kill-disable \
         --cpus="${CPU_CORES}" \
+        "${CPUSET_DOCKER_ARG[@]}" \
         -p "${HOST_PORT}:25565/tcp" \
         -p "${RCON_PORT}:25575/tcp" \
         -v "${DATA_DIR}:/data:rw" \
@@ -135,6 +144,7 @@ if [ "${SERVER_TYPE}" = "VELOCITY" ] || [ "${SERVER_TYPE}" = "BUNGEECORD" ] || [
         -e MEMORY="${HEAP_MB}M" \
         itzg/minecraft-server:latest
 else
+    echo "Deploying Isolated Minecraft Game Container (${SERVER_TYPE}) with ${CPU_CORES} vCPUs (Pinning: ${CPUSET_CPUS:-All})..."
     docker run -d \
         --name "${SERVER_ID}" \
         --restart unless-stopped \
@@ -142,6 +152,7 @@ else
         --memory-swap="${SWAP_TOTAL_MB}m" \
         --oom-kill-disable \
         --cpus="${CPU_CORES}" \
+        "${CPUSET_DOCKER_ARG[@]}" \
         --cap-drop=ALL \
         --security-opt no-new-privileges:true \
         "${APPARMOR_ARG[@]}" \

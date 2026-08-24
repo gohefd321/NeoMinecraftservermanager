@@ -36,6 +36,7 @@ from app.services.version_manifest import version_service
 from app.services.file_manager import file_manager
 from app.services.mod_indexer import mod_engine
 from app.services.server_store import server_store
+from app.services.cpu_scheduler import cpu_scheduler
 
 router = APIRouter(prefix="/servers", tags=["Minecraft Servers & Management"])
 
@@ -102,6 +103,7 @@ def deploy_local_container(server_data: Dict[str, Any], req: ServerDeployRequest
         rcon_port = server_data["rcon_port"]
         ram_mb = server_data["allocated_ram_mb"]
         cpu_cores = server_data.get("allocated_cpu_cores", req.allocated_cpu_cores)
+        cpuset_cpus = server_data.get("cpuset_cpus", "")
         
         swap_cfg = scheduler.get_swap_config()
         swap_mb = int(ram_mb * swap_cfg.swap_ratio)
@@ -130,7 +132,7 @@ def deploy_local_container(server_data: Dict[str, Any], req: ServerDeployRequest
                 server_id, str(port), str(rcon_port),
                 str(ram_mb), str(swap_mb),
                 str(server_type), str(mc_version), str(rcon_pass), crossplay,
-                str(cpu_cores)
+                str(cpu_cores), str(cpuset_cpus)
             ]
             print(f"[Master Local Deploy] Executing: {' '.join(cmd)}")
             with open(log_file_path, "a") as log_f:
@@ -143,7 +145,7 @@ def deploy_local_container(server_data: Dict[str, Any], req: ServerDeployRequest
 @router.post("/deploy")
 async def deploy_server(req: ServerDeployRequest):
     """
-    서버 배포 및 디스크 영구 저장
+    서버 배포 및 디스크 영구 저장 (Least-Used vCPU 코어 우선 할당 및 가용량 초과 시 자동 클램핑)
     """
     all_servers = server_store.get_all()
 
@@ -175,6 +177,9 @@ async def deploy_server(req: ServerDeployRequest):
         if actual_server_type not in ("FORGE", "NEOFORGE", "FABRIC"):
             actual_server_type = "FABRIC"
 
+    # 2. vCPU 코어 스케줄러: 사용 빈도수가 낮은 코어 우선 배정 & 노드 최대 코어 수 초과 시 자동 조정(Clamping)
+    cpuset_str, final_cpu_cores, was_clamped, max_node_cores = cpu_scheduler.allocate_cores(req.allocated_cpu_cores)
+
     assigned_node = scheduler.select_best_node(
         required_ram_mb=req.allocated_ram_mb,
         preferred_tier=req.hardware_tier_preference,
@@ -199,7 +204,8 @@ async def deploy_server(req: ServerDeployRequest):
         "server_type": actual_server_type,
         "mc_version": actual_version,
         "allocated_ram_mb": req.allocated_ram_mb,
-        "allocated_cpu_cores": req.allocated_cpu_cores,
+        "allocated_cpu_cores": final_cpu_cores,
+        "cpuset_cpus": cpuset_str,
         "status": ServerStatus.RUNNING.value,
         "billing_multiplier": assigned_node.billing_multiplier,
         "full_domain": f"{clean_slug}.domain.com",
@@ -226,6 +232,12 @@ async def deploy_server(req: ServerDeployRequest):
     if assigned_node.is_master_node:
         deploy_local_container(server_data, req)
 
+    # 배포 안내 메시지 생성 (클램핑 여부 반영)
+    if was_clamped:
+        msg = f"⚠️ [안내] 요청하신 {req.allocated_cpu_cores} vCPU가 노드 최대 코어 수({max_node_cores} Cores)를 초과하여, 노드 최대 가용치인 {final_cpu_cores} vCPU (배정 코어: #{cpuset_str})로 자동 조정되어 성공적으로 배포되었습니다."
+    else:
+        msg = f"[{actual_server_type}] 버전 {actual_version} ({final_cpu_cores} vCPU [코어: #{cpuset_str}], {req.allocated_ram_mb//1024}GB RAM) 서버 [{req.name}]가 성공적으로 배포되었습니다."
+
     return {
         "status": "success",
         "server_id": server_id,
@@ -239,10 +251,12 @@ async def deploy_server(req: ServerDeployRequest):
         "hardware_tier": assigned_node.hardware_tier,
         "billing_multiplier": assigned_node.billing_multiplier,
         "allocated_ram_mb": req.allocated_ram_mb,
-        "allocated_cpu_cores": req.allocated_cpu_cores,
+        "allocated_cpu_cores": final_cpu_cores,
+        "cpuset_cpus": cpuset_str,
+        "was_clamped": was_clamped,
         "injected_plugins": injected_plugins,
         "custom_domain_fee_deducted_krw": custom_fee,
-        "message": f"[{actual_server_type}] 버전 {actual_version} ({req.allocated_cpu_cores} vCPU, {req.allocated_ram_mb//1024}GB RAM) 서버 [{req.name}]가 성공적으로 배포되었습니다."
+        "message": msg
     }
 
 # ---------------------------------------------------------------------------
@@ -284,6 +298,9 @@ async def user_delete_server(server_id: str):
     server = server_store.delete(server_id)
     if not server:
         raise HTTPException(status_code=404, detail="서버를 찾을 수 없습니다.")
+
+    # CPU 코어 스케줄러 점유 회수
+    cpu_scheduler.release_cores(server.get("cpuset_cpus", ""))
 
     try:
         subprocess.run(["docker", "rm", "-f", server_id], check=False, stderr=subprocess.DEVNULL)
@@ -653,6 +670,9 @@ async def force_destroy_server(server_id: str):
     server = server_store.delete(server_id)
     if not server:
         raise HTTPException(status_code=404, detail="서버를 찾을 수 없습니다.")
+
+    # CPU 코어 점유 회수
+    cpu_scheduler.release_cores(server.get("cpuset_cpus", ""))
 
     try:
         subprocess.run(["docker", "rm", "-f", server_id], check=False, stderr=subprocess.DEVNULL)

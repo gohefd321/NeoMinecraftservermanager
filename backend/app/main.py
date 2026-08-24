@@ -852,6 +852,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                         version: s.mc_version,
                         ram: s.allocated_ram_mb,
                         cpus: s.allocated_cpu_cores || 2,
+                        cpuset: s.cpuset_cpus || "",
                         status: s.status || 'RUNNING'
                     }));
                     renderServers();
@@ -881,6 +882,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                 const ramGb = srv.ram / 1024;
                 const costMin = (0.20 + (ramGb * 0.08) + (srv.cpus * 0.05)) * 1.3;
                 totalCostHour += (costMin * 60);
+                const coreTag = srv.cpuset ? `[Core #${srv.cpuset}]` : '';
 
                 const card = document.createElement('div');
                 card.className = 'glass-card rounded-2xl p-5 space-y-4 border border-indigo-500/20';
@@ -889,7 +891,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                         <div>
                             <span class="font-extrabold text-base text-white">${srv.name}</span>
                             <div class="flex items-center gap-1.5 mt-1">
-                                <span class="px-2 py-0.5 bg-slate-800 text-slate-300 rounded font-mono text-[10px]">${srv.type} ${srv.version} (${srv.cpus} vCPU / ${ramGb}GB RAM)</span>
+                                <span class="px-2 py-0.5 bg-slate-800 text-slate-300 rounded font-mono text-[10px]">${srv.type} ${srv.version} (${srv.cpus} vCPU ${coreTag} / ${ramGb}GB RAM)</span>
                             </div>
                         </div>
                         <span class="px-2.5 py-1 text-xs font-mono font-bold ${srv.status === 'RUNNING' ? 'text-emerald-400 bg-emerald-950/80 border-emerald-500/30' : 'text-rose-400 bg-rose-950/80 border-rose-500/30'} rounded-full border flex items-center gap-1.5">
@@ -1092,7 +1094,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                         localStorage.setItem('mc_user', JSON.stringify(currentUser));
                         updateAuthState();
                     }
-                    alert(`🎉 [${payload.server_type}] 서버 [${payload.name}] 배포 완료!\\n접속 주소: ${res.connect_address}`);
+                    alert(res.message || `🎉 [${payload.server_type}] 서버 [${payload.name}] 배포 완료!\\n접속 주소: ${res.connect_address}`);
                     closeCreateModal();
                     await loadMyServers();
                     switchView('servers');
@@ -1111,10 +1113,11 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
         // Server Detailed Workspace & Real-Time Console & Logs
         // =======================================================================
         function openServerWorkspace(serverId) {
-            activeWsServer = myServers.find(s => s.id === serverId) || { id: serverId, name: "마인크래프트 서버", address: "alpha.domain.com", type: "PAPER", version: "26.2", ram: 4096, cpus: 2, status: 'RUNNING' };
+            activeWsServer = myServers.find(s => s.id === serverId) || { id: serverId, name: "마인크래프트 서버", address: "alpha.domain.com", type: "PAPER", version: "26.2", ram: 4096, cpus: 2, cpuset: "", status: 'RUNNING' };
             document.getElementById('wsServerName').innerText = activeWsServer.name;
             document.getElementById('wsServerAddress').innerText = activeWsServer.address;
-            document.getElementById('wsServerSpecs').innerText = `${activeWsServer.type} ${activeWsServer.version} (${activeWsServer.cpus} vCPU / ${activeWsServer.ram / 1024}GB RAM)`;
+            const coreTag = activeWsServer.cpuset ? `[Core #${activeWsServer.cpuset}]` : '';
+            document.getElementById('wsServerSpecs').innerText = `${activeWsServer.type} ${activeWsServer.version} (${activeWsServer.cpus} vCPU ${coreTag} / ${activeWsServer.ram / 1024}GB RAM)`;
             document.getElementById('wsServerStatus').innerText = activeWsServer.status;
             document.getElementById('serverWorkspaceModal').classList.remove('hidden');
             switchWsTab('console');

@@ -174,7 +174,7 @@ class ServerDeployRequest(BaseModel):
     server_type: Union[ServerType, str] = ServerType.PAPER
     mc_version: str = Field(default="26.2")
     allocated_ram_mb: int = Field(default=4096, ge=1024, le=131072)
-    allocated_cpu_cores: int = Field(default=2, ge=1, le=64)
+    allocated_cpu_cores: int = Field(default=2, ge=1, le=256)
     hardware_tier_preference: Optional[str] = "high_nvme"
     preferred_node_id: Optional[str] = None
     target_user_id: Optional[str] = None
