@@ -13,6 +13,12 @@ YELLOW='\033[1;33m'
 BOLD='\033[1m'
 NC='\033[0m'
 
+INSTALL_DIR="/opt/nextgen-mc-platform"
+CONFIG_DIR="/etc/nextgen-mc"
+DATA_DIR="/var/mc_servers"
+LOG_DIR="/var/log/nextgen-mc"
+GIT_REPO_URL="https://github.com/gohefd321/NeoMinecraftservermanager.git"
+
 echo -e "${CYAN}"
 echo "================================================================================"
 echo "   _  __         __  ____                                     _____                                             "
@@ -30,28 +36,30 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-# 2. 완전 파괴적 클린 재설치 (Nuclear Wipe) 옵션 확인
-INSTALL_DIR="/opt/nextgen-mc-platform"
-CONFIG_DIR="/etc/nextgen-mc"
-DATA_DIR="/var/mc_servers"
-LOG_DIR="/var/log/nextgen-mc"
-
+# 2. 설치 모드 분기 (수리, 클린 삭제, 일반 설치)
 CLI_ACTION="${1:-}"
+IS_REPAIR_MODE="no"
+WIPE_CHOICE="no"
 
-if [ "$CLI_ACTION" = "--wipe" ] || [ "$CLI_ACTION" = "--clean" ]; then
+if [ "$CLI_ACTION" = "--repair" ] || [ "$CLI_ACTION" = "-r" ]; then
+    IS_REPAIR_MODE="yes"
+elif [ "$CLI_ACTION" = "--wipe" ] || [ "$CLI_ACTION" = "--clean" ]; then
     WIPE_CHOICE="yes"
 elif [ -d "${INSTALL_DIR}" ] || [ -f "${CONFIG_DIR}/node.env" ]; then
     echo -e "${YELLOW}${BOLD}⚠️  기존에 설치된 NextGen MC Platform 환경이 감지되었습니다.${NC}"
     echo ""
     echo "  [1] 일반 설치 / 업데이트 (기존 데이터 및 월드 보존)"
-    echo -e "  [2] ${RED}${BOLD}⚠️  100% 완전 파괴적 클린 재설치 (Nuclear Wipe)${NC}"
+    echo -e "  [2] ${GREEN}${BOLD}🔧 의존성·방화벽·서비스 수리 및 복구 (Repair & Fix)${NC} (설정 보존 상태로 즉시 수리)"
+    echo -e "  [3] ${RED}${BOLD}⚠️  100% 완전 파괴적 클린 재설치 (Nuclear Wipe)${NC}"
     echo "      (모든 컨테이너·월드·설정·캐시 영구 삭제 후 0% 캐시 상태에서 완전 새로 시작)"
-    echo "  [3] 취소 (Exit)"
+    echo "  [4] 취소 (Exit)"
     echo ""
-    read -rp "선택 (1-3, 기본값: 1): " USER_SELECT
+    read -rp "선택 (1-4, 기본값: 1): " USER_SELECT
     USER_SELECT="${USER_SELECT:-1}"
 
     if [ "$USER_SELECT" = "2" ]; then
+        IS_REPAIR_MODE="yes"
+    elif [ "$USER_SELECT" = "3" ]; then
         echo -e "${RED}${BOLD}"
         echo "================================================================================"
         echo "⚠️  [경고] 이 작업은 다음 항목들을 완전히 영구 삭제합니다:"
@@ -69,17 +77,13 @@ elif [ -d "${INSTALL_DIR}" ] || [ -f "${CONFIG_DIR}/node.env" ]; then
             echo "취소되었습니다."
             exit 0
         fi
-    elif [ "$USER_SELECT" = "3" ]; then
+    elif [ "$USER_SELECT" = "4" ]; then
         echo "설치를 종료합니다."
         exit 0
-    else
-        WIPE_CHOICE="no"
     fi
-else
-    WIPE_CHOICE="no"
 fi
 
-if [ "${WIPE_CHOICE:-no}" = "yes" ]; then
+if [ "${WIPE_CHOICE}" = "yes" ]; then
     echo -e "${RED}>>> [Nuclear Wipe] Wiping all existing containers, files, services and caches...${NC}"
     systemctl stop mc-master 2>/dev/null || true
     systemctl stop mc-worker 2>/dev/null || true
@@ -148,7 +152,6 @@ case "$PKG_MGR" in
         ;;
     dnf|yum)
         $PKG_MGR check-update -y || true
-        # EPEL 저장소 활성화 (RHEL/CentOS/Rocky/Alma용)
         if [[ "$OS_ID" =~ ^(rhel|centos|rocky|almalinux)$ ]]; then
             $PKG_MGR install -y -q epel-release || true
         fi
@@ -202,11 +205,9 @@ mkdir -p "${CONFIG_DIR}"
 mkdir -p "${DATA_DIR}"
 mkdir -p "${LOG_DIR}"
 
-GIT_REPO_URL="https://github.com/gohefd321/NeoMinecraftservermanager.git"
 TMP_CLONE_DIR="/tmp/neo_mc_clone"
-
-# 로컬에 이미 최신 파일이 있으면 로컬 복사 우선, 없으면 git clone
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 if [ -f "${SCRIPT_DIR}/backend/app/main.py" ]; then
     echo "Deploying from local repository..."
     cp -r "${SCRIPT_DIR}"/* "${INSTALL_DIR}/" || true
@@ -237,9 +238,28 @@ else
     echo -e "${YELLOW}Warning: Systemd templates not found.${NC}"
 fi
 
-# 8. Setup Wizard 실행
-echo -e "${BLUE}>>> [5/5] Launching Web Setup Wizard on port 8080...${NC}"
 SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+
+# 8. [수리 모드인 경우] 서비스 즉시 재기동 및 완료 출력
+if [ "${IS_REPAIR_MODE}" = "yes" ]; then
+    echo -e "${GREEN}================================================================================"
+    echo -e "🎉 [수리 및 복구 완료] 시스템 패키지, Python 의존성, 방화벽, 서비스가 복구되었습니다!"
+    echo -e "👉 유저 대시보드 포털:  🌐  http://${SERVER_IP}:8005/"
+    echo -e "👉 어드민 제어 센터:    🌐  http://${SERVER_IP}:8005/admin"
+    echo -e "================================================================================${NC}"
+
+    if [ -f "${CONFIG_DIR}/node.env" ]; then
+        . "${CONFIG_DIR}/node.env"
+        SVC="mc-master"
+        [ "${NODE_ROLE:-master}" = "worker" ] && SVC="mc-worker"
+        systemctl restart "${SVC}" 2>/dev/null || true
+        systemctl status "${SVC}" --no-pager || true
+    fi
+    exit 0
+fi
+
+# 9. Setup Wizard 실행
+echo -e "${BLUE}>>> [5/5] Launching Web Setup Wizard on port 8080...${NC}"
 
 if [ -f "${INSTALL_DIR}/setup-wizard/main.go" ] && command -v go &>/dev/null; then
     cd "${INSTALL_DIR}/setup-wizard"
