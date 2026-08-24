@@ -20,6 +20,12 @@ MC_VERSION="${7:-1.20.4}"
 RCON_PASS="${8:-SafeRconKey999!}"
 ENABLE_CROSSPLAY="${9:-false}"
 
+# 버전 안전 검증 (정상 형식이 아니면 1.20.4로 자동 교정)
+if [[ ! "$MC_VERSION" =~ ^(1\.[0-9]+(\.[0-9]+)?|[0-9]{2}w[0-9]{2}[a-z]|1\.[0-9]+-pre[0-9]+|latest)$ ]]; then
+    echo "⚠️ [Warning] Invalid MC version format '${MC_VERSION}' detected. Fallback to 1.20.4 LTS."
+    MC_VERSION="1.20.4"
+fi
+
 DATA_DIR="/var/mc_servers/${SERVER_ID}"
 mkdir -p "${DATA_DIR}"
 
@@ -46,7 +52,7 @@ JVM_FLAGS=(
     "-Dcom.mojang.eula.agree=true"
 )
 
-# Folia 또는 Sponge 특수 JVM 옵션
+# Folia 특수 플래그
 if [ "${SERVER_TYPE}" = "FOLIA" ]; then
     JVM_FLAGS+=("-Dpaper.use-optimized-compact=true")
 fi

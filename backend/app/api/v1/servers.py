@@ -1,12 +1,13 @@
 """
 servers.py - Minecraft Server Management Supporting:
 - All Versions (Releases + Snapshots from Mojang Manifest)
-- Core Types: PAPER, FABRIC, FORGE (Official Forge), NEOFORGE, VELOCITY (L4 Proxy), BUNGEECORD
+- Core Types: PAPER, PURPUR, FOLIA, FABRIC, FORGE, NEOFORGE, SPONGE, VANILLA, SPIGOT, CRAFTBUKKIT, VELOCITY, BUNGEECORD
 - Dynamic Custom Tiers & Swap Ratios
 - Presets & Web RCON & AI Profiler
 """
 import uuid
 import os
+import re
 import subprocess
 import asyncio
 from datetime import datetime
@@ -26,6 +27,8 @@ from app.services.ai_profiler import ai_profiler
 from app.services.version_manifest import version_service
 
 router = APIRouter(prefix="/servers", tags=["Minecraft Servers & Helpdesk"])
+
+VALID_VER_REGEX = re.compile(r"^(1\.\d+(\.\d+)?|\d{2}w\d{2}[a-z]|1\.\d+-pre\d+|latest)$")
 
 # In-memory Mock Stores
 MOCK_SERVERS: Dict[str, Dict[str, Any]] = {
@@ -75,70 +78,89 @@ MOCK_TICKETS: Dict[str, Dict[str, Any]] = {
 # ---------------------------------------------------------------------------
 @router.get("/versions")
 async def get_available_mc_versions(refresh: bool = False):
-    """
-    모장(Mojang) 공식 API에서 모든 마인크래프트 릴리즈 및 최신 스냅샷(Snapshots) 목록 조회
-    """
+    """모장(Mojang) 공식 API에서 정규 릴리즈 및 개발 스냅샷(Snapshots) 목록 조회"""
     manifest = await version_service.get_version_manifest(force_refresh=refresh)
     return manifest
 
 # ---------------------------------------------------------------------------
-# 2. Local Container Deployment Helper (Swap Config Applied)
+# 2. Local Container Deployment Helper (Safe Fallback Logging)
 # ---------------------------------------------------------------------------
 def deploy_local_container(server_data: Dict[str, Any], req: ServerDeployRequest):
-    server_id = server_data["id"]
-    port = server_data["port"]
-    rcon_port = server_data["rcon_port"]
-    ram_mb = server_data["allocated_ram_mb"]
-    
-    # 어드민이 설정한 글로벌 스왑 비율 적용
-    swap_cfg = scheduler.get_swap_config()
-    swap_mb = int(ram_mb * swap_cfg.swap_ratio)
+    try:
+        server_id = server_data["id"]
+        port = server_data["port"]
+        rcon_port = server_data["rcon_port"]
+        ram_mb = server_data["allocated_ram_mb"]
+        
+        # 어드민이 설정한 글로벌 스왑 비율 적용
+        swap_cfg = scheduler.get_swap_config()
+        swap_mb = int(ram_mb * swap_cfg.swap_ratio)
 
-    rcon_pass = server_data["rcon_password"]
-    server_type = req.server_type.value if hasattr(req.server_type, "value") else str(req.server_type)
-    mc_version = req.mc_version
-    crossplay = "true" if req.enable_crossplay else "false"
+        rcon_pass = server_data["rcon_password"]
+        server_type = server_data["server_type"]
+        mc_version = server_data["mc_version"]
+        crossplay = "true" if req.enable_crossplay else "false"
 
-    script_path = "/opt/nextgen-mc-platform/scripts/deploy-mc-sandbox.sh"
-    if not os.path.exists(script_path):
-        script_path = "/home/bettercallsixseven/nextgen-mc-platform/scripts/deploy-mc-sandbox.sh"
+        script_path = "/opt/nextgen-mc-platform/scripts/deploy-mc-sandbox.sh"
+        if not os.path.exists(script_path):
+            script_path = "/home/bettercallsixseven/nextgen-mc-platform/scripts/deploy-mc-sandbox.sh"
 
-    if os.path.exists(script_path):
+        log_dir = "/tmp/nextgen-mc-logs"
         try:
+            os.makedirs("/var/log/nextgen-mc", exist_ok=True)
+            log_dir = "/var/log/nextgen-mc"
+        except Exception:
+            os.makedirs(log_dir, exist_ok=True)
+
+        log_file_path = os.path.join(log_dir, f"deploy_{server_id}.log")
+
+        if os.path.exists(script_path):
             cmd = [
                 "bash", script_path,
                 server_id, str(port), str(rcon_port),
                 str(ram_mb), str(swap_mb),
-                server_type, mc_version, rcon_pass, crossplay
+                str(server_type), str(mc_version), str(rcon_pass), crossplay
             ]
             print(f"[Master Local Deploy] Executing: {' '.join(cmd)}")
-            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception as e:
-            print(f"[Master Local Deploy Error] {e}")
+            
+            with open(log_file_path, "a") as log_f:
+                proc = subprocess.Popen(cmd, stdout=log_f, stderr=subprocess.STDOUT)
+            print(f"[Master Local Deploy] Process spawned (PID: {proc.pid}). Output logged to: {log_file_path}")
+    except Exception as e:
+        print(f"[Master Local Deploy Warning] Local container deployment encountered an issue: {e}")
 
 
 @router.post("/deploy")
 async def deploy_server(req: ServerDeployRequest):
     """
     마인크래프트 서버 또는 프록시(Velocity/Bungee) 배포
-    - 스냅샷 포함 모든 버전 지원
-    - 일반 Forge, NeoForge, Paper, Fabric, Velocity, BungeeCord 완벽 지원
-    - 커스텀 티어(Node Grouping) 자동 스케줄링
+    - 버전 검증 및 1.20.4 기본 안정화 가드 탑재
+    - 전체 12대 구동기 및 스냅샷 지원
     """
     injected_plugins = []
     actual_version = req.mc_version
-    actual_server_type = req.server_type
+    actual_server_type = req.server_type.value if hasattr(req.server_type, "value") else str(req.server_type)
 
+    # 1. 프리셋별 코어 및 버전 자동 보정
     if req.preset_type == ServerPreset.BUILDER_FLAT:
-        actual_server_type = ServerType.PAPER
+        actual_server_type = "PAPER"
+        actual_version = "1.20.4"
         injected_plugins = ["FastAsyncWorldEdit", "CoreProtect", "Chunky", "Spark"]
     elif req.preset_type == ServerPreset.SURVIVAL_SMP:
-        actual_server_type = ServerType.PAPER
+        actual_server_type = "PAPER"
+        actual_version = "1.20.4"
         injected_plugins = ["EssentialsX (TPA, Spawn, Home)", "Chunky", "Spark"]
-    elif req.server_type == ServerType.VELOCITY:
+    elif actual_server_type == "VELOCITY":
+        actual_version = "latest"
         injected_plugins = ["Velocity L4 Forwarding", "RedisBungeeBridge"]
-    elif req.server_type == ServerType.BUNGEECORD:
+    elif actual_server_type in ("BUNGEECORD", "WATERFALL"):
+        actual_version = "latest"
         injected_plugins = ["BungeeGuard", "RedisBungee"]
+    else:
+        # 버전 정규식 검증 (비정상 버전이 들어오면 1.20.4로 자동 교정)
+        if not actual_version or not VALID_VER_REGEX.match(actual_version):
+            print(f"[Deploy Warning] Invalid MC version detected ('{actual_version}'). Fallback to 1.20.4.")
+            actual_version = "1.20.4"
 
     assigned_node = scheduler.select_best_node(
         required_ram_mb=req.allocated_ram_mb,

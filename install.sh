@@ -197,6 +197,7 @@ if ! command -v docker &> /dev/null; then
 fi
 
 systemctl enable --now docker
+chmod 666 /var/run/docker.sock 2>/dev/null || true
 
 # 5. 플랫폼 디렉토리 배치 및 Git 레포지토리 클론
 echo -e "${BLUE}>>> [3/5] Setting up platform directory and cloning from GitHub...${NC}"
