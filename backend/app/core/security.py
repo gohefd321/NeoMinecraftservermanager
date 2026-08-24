@@ -1,7 +1,9 @@
 """
 security.py - Security, Sanitization, SSRF Defense, and Authentication
+Includes: Admin Auth Gateway, JWT Token, RCON Sanitizer, SSRF Guard
 """
 import re
+import os
 import hmac
 import json
 import base64
@@ -9,7 +11,7 @@ import ipaddress
 import urllib.parse
 from datetime import datetime, timedelta
 from typing import Optional, Any
-from fastapi import HTTPException, Security, status
+from fastapi import HTTPException, Security, Header, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.config import settings
 
@@ -28,12 +30,6 @@ SAFE_RCON_COMMANDS = {
 }
 
 def sanitize_rcon_command(command: str) -> str:
-    """
-    RCON 명령어 살균 및 인젝션 방어
-    - CRLF 줄바꿈 주입 차단
-    - 쉘 실행 특수문자 차단
-    - 화이트리스트 프리픽스 검증
-    """
     cleaned = command.strip()
     if not cleaned:
         raise HTTPException(status_code=400, detail="명령어가 비어 있습니다.")
@@ -63,20 +59,17 @@ def sanitize_rcon_command(command: str) -> str:
 # 2. SSRF (Server-Side Request Forgery) Defense
 # ---------------------------------------------------------------------------
 BLOCKED_IP_NETWORKS = [
-    ipaddress.ip_network("127.0.0.0/8"),       # Loopback
-    ipaddress.ip_network("10.0.0.0/8"),        # Private RFC1918
-    ipaddress.ip_network("172.16.0.0/12"),     # Private RFC1918
-    ipaddress.ip_network("192.168.0.0/16"),    # Private RFC1918
-    ipaddress.ip_network("169.254.0.0/16"),    # Link-local / Metadata
-    ipaddress.ip_network("::1/128"),           # IPv6 Loopback
-    ipaddress.ip_network("fc00::/7"),          # IPv6 Unique Local
-    ipaddress.ip_network("fe80::/10"),         # IPv6 Link-Local
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
 ]
 
 def validate_url_safety(target_url: str) -> str:
-    """
-    외부 모드팩 다운로드 및 웹훅 URL의 SSRF 취약점을 방어
-    """
     parsed = urllib.parse.urlparse(target_url)
     if parsed.scheme not in ("http", "https"):
         raise HTTPException(status_code=400, detail="HTTP 및 HTTPS URL만 허용됩니다.")
@@ -100,10 +93,9 @@ def validate_url_safety(target_url: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 3. Path Traversal Defense (Zip Slip 방어)
+# 3. Path Traversal Defense
 # ---------------------------------------------------------------------------
 def sanitize_relative_path(path_str: str) -> str:
-    """Path Traversal (../) 차단 및 정규화"""
     normalized = urllib.parse.unquote(path_str).replace("\\", "/")
     if "../" in normalized or normalized.startswith("/") or ":" in normalized:
         raise HTTPException(status_code=400, detail=f"악의적인 경로 탐색 시도가 감지되었습니다: {path_str}")
@@ -128,7 +120,6 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         to_encode.update({"exp": expire})
         return jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
     except ImportError:
-        # Fallback Standard JWT 구현 (외부 패키지 미설치 환경 호환)
         header = {"alg": "HS256", "typ": "JWT"}
         to_encode = data.copy()
         expire = int((datetime.utcnow() + (expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))).timestamp())
@@ -173,3 +164,40 @@ def decode_access_token(token: str) -> dict:
         if "exp" in payload and payload["exp"] < int(datetime.utcnow().timestamp()):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="토큰이 만료되었습니다.")
         return payload
+
+
+# ---------------------------------------------------------------------------
+# 5. 어드민 전용 강력 인증 가드 (Admin Security Gateway)
+# ---------------------------------------------------------------------------
+def get_master_secret() -> str:
+    return os.getenv("MASTER_SECRET", settings.CLUSTER_SECRET)
+
+def require_admin_auth(
+    x_admin_secret: Optional[str] = Header(None, alias="X-Admin-Secret"),
+    auth_credentials: Optional[HTTPAuthorizationCredentials] = Security(security_bearer)
+) -> bool:
+    """
+    어드민 API 및 제어 엔드포인트 보안 인증 가드
+    1. X-Admin-Secret 헤더 검증
+    2. Bearer 어드민 JWT 토큰 검증
+    """
+    valid_secret = get_master_secret()
+
+    # 1. 마스터 시크릿 헤더 확인
+    if x_admin_secret and hmac.compare_digest(x_admin_secret, valid_secret):
+        return True
+
+    # 2. Bearer 어드민 토큰 확인
+    if auth_credentials and auth_credentials.credentials:
+        try:
+            payload = decode_access_token(auth_credentials.credentials)
+            if payload.get("role") == "admin" or payload.get("is_admin") is True:
+                return True
+        except Exception:
+            pass
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="어드민 접근 권한이 없습니다. 올바른 마스터 시크릿 또는 어드민 토큰으로 로그인하십시오.",
+        headers={"WWW-Authenticate": "Bearer"}
+    )

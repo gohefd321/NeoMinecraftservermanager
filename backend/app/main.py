@@ -2,7 +2,7 @@
 main.py - Master Node FastAPI Application Entrypoint
 Includes:
 1. User Client Portal (/) - Google OAuth / 19+ Adult Verification Modal, Server Rental, Credit Wallet, Console
-2. All-in-One Admin Control Center (/admin) - Billing Tiers, User & Credit Management, Helpdesk Tickets, Server Provisioning, System Settings (Google & LLM)
+2. Protected Admin Center (/admin) - Protected by Master Secret Auth Modal & JWT Gateway
 3. Master-as-Worker Local Container Support
 """
 import asyncio
@@ -36,7 +36,6 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
     </style>
 </head>
 <body class="p-4 md:p-8 max-w-6xl mx-auto space-y-8">
-    <!-- Top Navbar -->
     <header class="flex items-center justify-between pb-5 border-b border-slate-800/80">
         <div class="flex items-center gap-3">
             <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center font-black text-xl text-white shadow-lg shadow-indigo-500/30">⛏️</div>
@@ -49,7 +48,6 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
         </div>
 
         <div class="flex items-center gap-3">
-            <!-- Logged Out State -->
             <div id="authLoggedOut" class="flex items-center gap-2">
                 <button onclick="openLoginModal()" class="px-4 py-2 rounded-xl gradient-btn text-white font-bold text-xs shadow-lg shadow-indigo-600/30 hover:opacity-90 transition flex items-center gap-1.5">
                     <svg class="w-4 h-4" viewBox="0 0 24 24"><path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
@@ -57,7 +55,6 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                 </button>
             </div>
 
-            <!-- Logged In State (Hidden by default) -->
             <div id="authLoggedIn" class="hidden flex items-center gap-3">
                 <div class="px-3.5 py-1.5 bg-slate-900/90 rounded-xl border border-slate-800 flex items-center gap-3 text-xs">
                     <div>
@@ -75,11 +72,10 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                 </div>
             </div>
 
-            <a href="/admin" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold">⚙️ 관리자</a>
+            <a href="/admin" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold">🔒 관리자</a>
         </div>
     </header>
 
-    <!-- Hero Banner -->
     <div class="glass-card rounded-3xl p-6 md:p-10 bg-gradient-to-r from-indigo-950/40 via-slate-900 to-slate-900 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-2xl">
         <div class="space-y-3 max-w-xl">
             <span class="px-3 py-1 rounded-full text-[11px] font-black bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 uppercase tracking-wider">
@@ -97,7 +93,6 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
         </button>
     </div>
 
-    <!-- My Servers Section -->
     <div class="space-y-4">
         <div class="flex items-center justify-between">
             <h3 class="text-lg font-bold text-white flex items-center gap-2"><span>🎮</span> 내 마인크래프트 서버</h3>
@@ -112,7 +107,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- Login / Registration Modal with 19+ Adult Verification -->
+    <!-- Login Modal -->
     <div id="loginModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 z-50">
         <div class="glass-card max-w-md w-full rounded-2xl p-6 md:p-8 space-y-5 shadow-2xl">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -128,7 +123,6 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                     <input type="email" id="login_email" required placeholder="your-email@gmail.com" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500">
                 </div>
 
-                <!-- 19+ Mandatory Legal Age Verification -->
                 <div class="p-3.5 bg-indigo-950/40 rounded-xl border border-indigo-500/30 space-y-2">
                     <label class="flex items-start gap-2.5 cursor-pointer">
                         <input type="checkbox" id="adult_agree" required class="mt-0.5 rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-0">
@@ -146,7 +140,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- Create Server Modal -->
+    <!-- Create Modal -->
     <div id="createModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 z-50">
         <div class="glass-card max-w-lg w-full rounded-2xl p-6 md:p-8 space-y-5 shadow-2xl">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -159,7 +153,6 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                     <label class="block font-semibold text-slate-300 mb-1">서버 명칭</label>
                     <input type="text" id="srv_name" required placeholder="예: 야생 생존 서버" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500">
                 </div>
-
                 <div>
                     <label class="block font-semibold text-slate-300 mb-1">인게임 접속 서브도메인 (id.domain.com)</label>
                     <div class="flex items-center gap-2">
@@ -167,44 +160,41 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                         <span class="text-slate-400 font-mono">.domain.com</span>
                     </div>
                 </div>
-
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="block font-semibold text-slate-300 mb-1">서버 코어</label>
                         <select id="srv_type" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500">
-                            <option value="PAPER">Paper (플러그인 최적화)</option>
-                            <option value="FABRIC">Fabric (경량 모드)</option>
-                            <option value="NEOFORGE">NeoForge (대형 모드팩)</option>
+                            <option value="PAPER">Paper</option>
+                            <option value="FABRIC">Fabric</option>
+                            <option value="NEOFORGE">NeoForge</option>
                         </select>
                     </div>
                     <div>
                         <label class="block font-semibold text-slate-300 mb-1">버전</label>
                         <select id="srv_version" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none font-mono">
-                            <option value="1.20.4">1.20.4 (최신 권장)</option>
+                            <option value="1.20.4">1.20.4</option>
                             <option value="1.20.2">1.20.2</option>
                             <option value="1.19.4">1.19.4</option>
                         </select>
                     </div>
                 </div>
-
                 <div class="grid grid-cols-2 gap-3">
                     <div>
-                        <label class="block font-semibold text-slate-300 mb-1">할당 RAM 메모리</label>
+                        <label class="block font-semibold text-slate-300 mb-1">할당 RAM</label>
                         <select id="srv_ram" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none">
-                            <option value="4096">4 GB RAM (기본 권장)</option>
+                            <option value="4096">4 GB RAM</option>
                             <option value="6144">6 GB RAM</option>
                             <option value="8192">8 GB RAM</option>
                         </select>
                     </div>
                     <div>
-                        <label class="block font-semibold text-slate-300 mb-1">하드웨어 스펙 티어</label>
+                        <label class="block font-semibold text-slate-300 mb-1">하드웨어 티어</label>
                         <select id="srv_tier" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none">
                             <option value="high_nvme" selected>고성능 NVMe (1.3x)</option>
                             <option value="standard_ssd">표준 SSD (1.0x)</option>
                         </select>
                     </div>
                 </div>
-
                 <div class="pt-3 flex justify-end gap-2">
                     <button type="button" onclick="closeCreateModal()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300">취소</button>
                     <button type="submit" id="deployBtn" class="gradient-btn px-5 py-2 rounded-xl text-white font-bold">배포 시작</button>
@@ -428,14 +418,14 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
 </html>"""
 
 # ==============================================================================
-# 2. 어드민 전용 통합 제어 센터 UI (환경설정 패널 포함)
+# 2. 어드민 전용 통합 제어 센터 UI (보안 인증 모달 & 토큰 게이트웨이 탑재)
 # ==============================================================================
 ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NextGen MC - 어드민 통합 제어 센터</title>
+    <title>NextGen MC - 어드민 보안 제어 센터</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;600;700;800;900&display=swap');
@@ -445,6 +435,30 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
     </style>
 </head>
 <body class="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
+
+    <!-- Admin Authentication Modal (Screen Lock if not authenticated) -->
+    <div id="adminAuthGateModal" class="fixed inset-0 bg-black/90 backdrop-blur-xl flex items-center justify-center p-4 z-50">
+        <div class="card max-w-md w-full rounded-2xl p-8 space-y-5 shadow-2xl border border-indigo-500/40">
+            <div class="text-center space-y-2">
+                <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-indigo-600/30 text-indigo-400 border border-indigo-500/30 text-2xl mb-1">🔒</div>
+                <h3 class="text-xl font-extrabold text-white">NextGen MC 총괄 관리자 인증</h3>
+                <p class="text-xs text-slate-400">어드민 제어 센터는 마스터 시크릿 암호 인증이 필요합니다.</p>
+            </div>
+
+            <form id="adminAuthForm" class="space-y-4 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-300 mb-1">클러스터 마스터 시크릿 (Master Secret Key)</label>
+                    <input type="password" id="adminSecretInput" required placeholder="설치 시 지정한 마스터 시크릿 입력" class="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-slate-100 outline-none focus:border-indigo-500">
+                </div>
+                <button type="submit" id="adminAuthBtn" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 font-extrabold text-white rounded-xl shadow-lg shadow-indigo-600/30 transition">
+                    관리자 인증 및 제어 센터 접속
+                </button>
+                <div id="adminAuthError" class="hidden text-rose-400 text-center font-semibold"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Protected Admin Dashboard Header -->
     <header class="flex flex-col md:flex-row items-start md:items-center justify-between pb-4 border-b border-slate-800 gap-4">
         <div>
             <h1 class="text-2xl font-black text-white flex items-center gap-3">
@@ -455,9 +469,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
         </div>
         <div class="flex items-center gap-3">
             <a href="/" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold">👉 유저 대시보드</a>
-            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-950 text-emerald-400 border border-emerald-500/30">
-                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Master Control Plane
-            </span>
+            <button onclick="adminLogout()" class="px-3 py-1.5 bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-bold">🔒 관리자 로그아웃</button>
         </div>
     </header>
 
@@ -644,7 +656,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                 </div>
 
                 <div class="p-4 bg-slate-900/80 rounded-xl border border-slate-800 space-y-3">
-                    <span class="font-bold text-amber-400 text-sm block">🤖 로컬 AI 렉 진단기 (Local LLM / TabbyAPI / llama-server)</span>
+                    <span class="font-bold text-amber-400 text-sm block">🤖 로컬 AI 렉 진단기 (Local LLM / llama-server)</span>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
                             <label class="block text-slate-400 mb-1">Local LLM API URL (llama-server: 8000)</label>
@@ -691,7 +703,66 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
     </div>
 
     <script>
+        let adminToken = sessionStorage.getItem('mc_admin_token') || null;
+
+        function getAuthHeaders() {
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${adminToken}`
+            };
+        }
+
+        async function verifyAdminAuth() {
+            if (!adminToken) {
+                document.getElementById('adminAuthGateModal').classList.remove('hidden');
+                return false;
+            }
+            document.getElementById('adminAuthGateModal').classList.add('hidden');
+            return true;
+        }
+
+        function adminLogout() {
+            sessionStorage.removeItem('mc_admin_token');
+            adminToken = null;
+            document.getElementById('adminAuthGateModal').classList.remove('hidden');
+        }
+
+        document.getElementById('adminAuthForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const secret = document.getElementById('adminSecretInput').value;
+            const errBox = document.getElementById('adminAuthError');
+            const btn = document.getElementById('adminAuthBtn');
+            btn.disabled = true;
+            btn.innerText = '인증 검증 중...';
+
+            try {
+                const resp = await fetch('/api/v1/auth/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ master_secret: secret })
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    adminToken = data.access_token;
+                    sessionStorage.setItem('mc_admin_token', adminToken);
+                    document.getElementById('adminAuthGateModal').classList.add('hidden');
+                    loadBillingRates();
+                    loadAdminNodes();
+                } else {
+                    errBox.innerText = data.detail || '마스터 시크릿 암호가 올바르지 않습니다.';
+                    errBox.classList.remove('hidden');
+                }
+            } catch (err) {
+                errBox.innerText = '서버 연결 실패: ' + err.message;
+                errBox.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = '관리자 인증 및 제어 센터 접속';
+            }
+        });
+
         function switchTab(tabId) {
+            if (!adminToken) { verifyAdminAuth(); return; }
             ['billing', 'users', 'tickets', 'servers', 'settings'].forEach(t => {
                 document.getElementById('section_' + t).classList.add('hidden');
                 document.getElementById('tab_' + t).classList.remove('active');
@@ -706,7 +777,9 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
         }
 
         async function loadBillingRates() {
-            const resp = await fetch('/api/v1/nodes/admin/billing/rates');
+            if (!adminToken) return;
+            const resp = await fetch('/api/v1/nodes/admin/billing/rates', { headers: getAuthHeaders() });
+            if (resp.status === 401) { adminLogout(); return; }
             const d = await resp.json();
             document.getElementById('rate_base').value = d.base_container_per_min;
             document.getElementById('rate_chunk').value = d.per_chunk_rate;
@@ -730,14 +803,16 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             };
             await fetch('/api/v1/nodes/admin/billing/rates', {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getAuthHeaders(),
                 body: JSON.stringify(payload)
             });
             alert('과금 요율 수정 및 실시간 적용 완료!');
         });
 
         async function loadAdminNodes() {
-            const resp = await fetch('/api/v1/nodes/admin/overview');
+            if (!adminToken) return;
+            const resp = await fetch('/api/v1/nodes/admin/overview', { headers: getAuthHeaders() });
+            if (resp.status === 401) { adminLogout(); return; }
             const data = await resp.json();
             const container = document.getElementById('adminNodesGrid');
             container.innerHTML = '';
@@ -760,7 +835,9 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
         }
 
         async function loadAdminUsers() {
-            const resp = await fetch('/api/v1/auth/admin/users');
+            if (!adminToken) return;
+            const resp = await fetch('/api/v1/auth/admin/users', { headers: getAuthHeaders() });
+            if (resp.status === 401) { adminLogout(); return; }
             const users = await resp.json();
             const tbody = document.getElementById('usersTableBody');
             tbody.innerHTML = '';
@@ -786,7 +863,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             if (val && !isNaN(val)) {
                 await fetch('/api/v1/auth/admin/users/adjust-credit', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getAuthHeaders(),
                     body: JSON.stringify({ user_id: uid, amount_krw: parseFloat(val), reason: "어드민 수동 조정" })
                 });
                 loadAdminUsers();
@@ -795,13 +872,15 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
 
         async function toggleUserBan(uid) {
             if (confirm(`유저 [${uid}]의 상태를 변경하시겠습니까?`)) {
-                await fetch(`/api/v1/auth/admin/users/${uid}/toggle-status`, { method: 'POST' });
+                await fetch(`/api/v1/auth/admin/users/${uid}/toggle-status`, { method: 'POST', headers: getAuthHeaders() });
                 loadAdminUsers();
             }
         }
 
         async function loadAdminTickets() {
-            const resp = await fetch('/api/v1/servers/admin/tickets');
+            if (!adminToken) return;
+            const resp = await fetch('/api/v1/servers/admin/tickets', { headers: getAuthHeaders() });
+            if (resp.status === 401) { adminLogout(); return; }
             const tickets = await resp.json();
             const list = document.getElementById('ticketsList');
             list.innerHTML = '';
@@ -848,7 +927,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             };
             await fetch('/api/v1/servers/admin/tickets/resolve', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getAuthHeaders(),
                 body: JSON.stringify(payload)
             });
             alert('민원 답변 및 상태가 등록되었습니다!');
@@ -857,7 +936,9 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
         });
 
         async function loadAdminServers() {
-            const resp = await fetch('/api/v1/servers/admin/all');
+            if (!adminToken) return;
+            const resp = await fetch('/api/v1/servers/admin/all', { headers: getAuthHeaders() });
+            if (resp.status === 401) { adminLogout(); return; }
             const servers = await resp.json();
             const grid = document.getElementById('adminServersGrid');
             grid.innerHTML = '';
@@ -900,7 +981,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             };
             const resp = await fetch('/api/v1/servers/deploy', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getAuthHeaders(),
                 body: JSON.stringify(payload)
             });
             const res = await resp.json();
@@ -916,7 +997,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
         async function forceServerAction(id, act) {
             await fetch(`/api/v1/servers/admin/${id}/force-action`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getAuthHeaders(),
                 body: JSON.stringify({ action: act })
             });
             loadAdminServers();
@@ -924,13 +1005,18 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
 
         async function forceDestroyServer(id) {
             if (confirm(`서버 [${id}]를 클러스터에서 강제 영구 삭제하시겠습니까?`)) {
-                await fetch(`/api/v1/servers/admin/${id}`, { method: 'DELETE' });
+                await fetch(`/api/v1/servers/admin/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
                 loadAdminServers();
             }
         }
 
-        loadBillingRates();
-        loadAdminNodes();
+        // Check Auth on Init
+        verifyAdminAuth().then(isAuth => {
+            if (isAuth) {
+                loadBillingRates();
+                loadAdminNodes();
+            }
+        });
     </script>
 </body>
 </html>"""
@@ -967,12 +1053,10 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 @app.get("/", response_class=HTMLResponse)
 @app.get("/dashboard", response_class=HTMLResponse)
 async def user_portal():
-    """일반 고객용 공식 웹 사이트 (회원가입, 구글 1초 로그인, 19세 성인인증, 서버 생성, 지갑)"""
     return USER_PORTAL_HTML
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard():
-    """총괄 관리자용 통합 제어 센터 (과금 티어, 계정관리, 민원처리, 서버생성, Google & LLM 설정)"""
     return ADMIN_DASHBOARD_HTML
 
 @app.get("/health")

@@ -1,5 +1,6 @@
 """
 servers.py - Minecraft Server Management, Deployment (Master & Worker), RCON, AI Diagnostics & Helpdesk
+Protected by Admin Auth Gateway
 """
 import uuid
 import os
@@ -13,7 +14,7 @@ from app.models.schema import (
     TelemetryReportPayload, ServerResponse, AIReportResponse, HelpdeskTicket,
     HelpdeskTicketCreate, TicketResolveRequest, TicketStatus, ServerStatus, ServerType
 )
-from app.core.security import sanitize_rcon_command
+from app.core.security import sanitize_rcon_command, require_admin_auth
 from app.core.database import db
 from app.services.node_scheduler import scheduler
 from app.services.billing_engine import billing_engine
@@ -63,7 +64,6 @@ MOCK_TICKETS: Dict[str, Dict[str, Any]] = {
 }
 
 def deploy_local_container(server_data: Dict[str, Any], req: ServerDeployRequest):
-    """Master 노드 로컬에서 직접 격리 컨테이너 구동 (Master-as-Worker)"""
     server_id = server_data["id"]
     port = server_data["port"]
     rcon_port = server_data["rcon_port"]
@@ -94,7 +94,6 @@ def deploy_local_container(server_data: Dict[str, Any], req: ServerDeployRequest
 
 @router.post("/deploy")
 async def deploy_server(req: ServerDeployRequest):
-    """서버 생성 요청 (유저 및 어드민 공통)"""
     assigned_node = scheduler.select_best_node(
         required_ram_mb=req.allocated_ram_mb,
         preferred_tier=req.hardware_tier_preference,
@@ -151,7 +150,6 @@ async def deploy_server(req: ServerDeployRequest):
 
 @router.post("/{server_id}/rcon")
 async def execute_rcon(server_id: str, req: RconExecuteRequest):
-    """RCON 콘솔 명령어 살균 실행"""
     if server_id not in MOCK_SERVERS:
         raise HTTPException(status_code=404, detail="서버를 찾을 수 없습니다.")
 
@@ -182,23 +180,22 @@ async def trigger_ai_diagnostic(server_id: str, spark_dump: str = ""):
     return report
 
 # ---------------------------------------------------------------------------
-# Admin Server & Helpdesk Ticket Endpoints
+# Admin Server & Helpdesk Endpoints (Protected by require_admin_auth)
 # ---------------------------------------------------------------------------
-@router.get("/admin/all")
+@router.get("/admin/all", dependencies=[Depends(require_admin_auth)])
 async def get_all_servers_admin():
-    """어드민 대시보드: 클러스터 내 전체 서버 목록 조회"""
+    """어드민 대시보드: 클러스터 내 전체 서버 목록 조회 (인증 필수)"""
     return list(MOCK_SERVERS.values())
 
-@router.post("/admin/{server_id}/force-action")
+@router.post("/admin/{server_id}/force-action", dependencies=[Depends(require_admin_auth)])
 async def force_server_action(server_id: str, req: ServerControlRequest):
-    """어드민 대시보드: 특정 서버 강제 시작 / 정지 / 재시작 / 킬"""
+    """어드민 대시보드: 특정 서버 강제 시작 / 정지 / 재시작 / 킬 (인증 필수)"""
     if server_id not in MOCK_SERVERS:
         raise HTTPException(status_code=404, detail="서버를 찾을 수 없습니다.")
 
     server = MOCK_SERVERS[server_id]
     if req.action in ("stop", "kill"):
         server["status"] = ServerStatus.STOPPED
-        # Docker 컨테이너 정지 시도
         try:
             subprocess.run(["docker", "stop", server_id], check=False, stderr=subprocess.DEVNULL)
         except Exception:
@@ -218,9 +215,9 @@ async def force_server_action(server_id: str, req: ServerControlRequest):
         "message": f"서버 [{server['name']}]에 대해 '{req.action}' 강제 명령이 수행되었습니다."
     }
 
-@router.delete("/admin/{server_id}")
+@router.delete("/admin/{server_id}", dependencies=[Depends(require_admin_auth)])
 async def force_destroy_server(server_id: str):
-    """어드민 대시보드: 특정 서버 강제 영구 삭제"""
+    """어드민 대시보드: 특정 서버 강제 영구 삭제 (인증 필수)"""
     if server_id not in MOCK_SERVERS:
         raise HTTPException(status_code=404, detail="서버를 찾을 수 없습니다.")
 
@@ -236,17 +233,13 @@ async def force_destroy_server(server_id: str):
         "message": f"서버 [{server['name']}]가 클러스터에서 완전히 제거되었습니다."
     }
 
-# ---------------------------------------------------------------------------
-# Helpdesk Tickets Management (민원 처리)
-# ---------------------------------------------------------------------------
-@router.get("/admin/tickets")
+@router.get("/admin/tickets", dependencies=[Depends(require_admin_auth)])
 async def get_all_tickets():
-    """어드민 대시보드: 전체 민원/장애접수 티켓 목록 조회"""
+    """어드민 대시보드: 전체 민원/장애접수 티켓 목록 조회 (인증 필수)"""
     return list(MOCK_TICKETS.values())
 
 @router.post("/tickets/create")
 async def create_support_ticket(ticket: HelpdeskTicketCreate):
-    """유저 대시보드 / AI 진단 연동: 새 헬프데스크 티켓 발급"""
     t_id = f"TCK-{uuid.uuid4().hex[:4].upper()}"
     new_ticket = {
         "id": t_id,
@@ -266,9 +259,9 @@ async def create_support_ticket(ticket: HelpdeskTicketCreate):
         "message": "AI 진단 리포트가 포함된 기술지원 티켓이 어드민 팀으로 전달되었습니다."
     }
 
-@router.post("/admin/tickets/resolve")
+@router.post("/admin/tickets/resolve", dependencies=[Depends(require_admin_auth)])
 async def resolve_ticket_admin(req: TicketResolveRequest):
-    """어드민 대시보드: 민원 티켓 답변 작성 및 상태 완료/진행중 처리"""
+    """어드민 대시보드: 민원 티켓 답변 작성 및 상태 완료 처리 (인증 필수)"""
     if req.ticket_id not in MOCK_TICKETS:
         raise HTTPException(status_code=404, detail="해당 티켓을 찾을 수 없습니다.")
 
