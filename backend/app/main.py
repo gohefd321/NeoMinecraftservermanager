@@ -1,8 +1,8 @@
 """
 main.py - Master Node FastAPI Application Entrypoint
-Includes:
-1. User Client Portal (/) - 3 Presets (Builder Flat, Survival SMP, Advanced) & Exact 3 MC Versions (1.20.4, 1.20.2, 1.16.5)
-2. Protected Admin Center (/admin) - Protected by Master Secret Auth Modal & JWT Gateway
+Features:
+1. User Client Portal (/) - Hidden Admin Link, Full Mojang Version Manifest (Snapshots), Forge, Velocity & BungeeCord
+2. Protected Admin Center (/admin) - Custom Tier Creation (Node Grouping), Global Swap Ratio (ZRAM/NVMe), 401 Auth Gateway
 3. Master-as-Worker Local Container Support
 """
 import asyncio
@@ -18,7 +18,7 @@ from app.services.billing_engine import billing_engine
 from app.services.node_scheduler import scheduler
 
 # ==============================================================================
-# 1. 일반 유저 전용 웹 사이트 (3가지 프리셋 & 3대 마인크래프트 버전)
+# 1. 일반 유저 전용 웹 사이트 (관리자 링크 비노출, 스냅샷 전체 버전, Forge/Velocity/Bungee)
 # ==============================================================================
 USER_PORTAL_HTML = """<!DOCTYPE html>
 <html lang="ko">
@@ -45,7 +45,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                 <h1 class="text-xl font-extrabold text-white tracking-tight flex items-center gap-2">
                     NextGen MC <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-900/60 text-indigo-300 border border-indigo-500/30 uppercase">Cloud</span>
                 </h1>
-                <p class="text-[11px] text-slate-400">초저지연 실시간 종량제 마인크래프트 서버 호스팅 (1.20.4 / 1.20.2 / 1.16.5)</p>
+                <p class="text-[11px] text-slate-400">초저지연 실시간 종량제 마인크래프트 서버 호스팅</p>
             </div>
         </div>
 
@@ -73,21 +73,19 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                     <button onclick="logout()" class="text-xs text-slate-500 hover:text-rose-400 font-semibold underline ml-1">로그아웃</button>
                 </div>
             </div>
-
-            <a href="/admin" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold">🔒 관리자</a>
         </div>
     </header>
 
     <div class="glass-card rounded-3xl p-6 md:p-10 bg-gradient-to-r from-indigo-950/40 via-slate-900 to-slate-900 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-2xl">
         <div class="space-y-3 max-w-xl">
             <span class="px-3 py-1 rounded-full text-[11px] font-black bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 uppercase tracking-wider">
-                ⚡ 3대 원클릭 프리셋 (건축 평지 • 야생 생존 • 고급 커스텀)
+                ⚡ 최신 스냅샷 • 일반 Forge • Velocity 프록시 완벽 지원
             </span>
             <h2 class="text-3xl md:text-4xl font-black text-white leading-tight">
                 원하는 플레이 스타일에 맞춰<br><span class="gradient-text">1초 만에 서버를 개설하세요</span>
             </h2>
             <p class="text-xs md:text-sm text-slate-400 leading-relaxed">
-                복잡한 포트 설정 없이 <strong>id.domain.com</strong>으로 즉시 접속되는 Velocity 스마트 라우팅 및 검증된 3개 버전(1.20.4, 1.20.2, 1.16.5)을 제공합니다.
+                포트 번호 없이 <strong>myserver.domain.com</strong>으로 접속되는 스마트 라우팅, 실시간 종량제 과금(Pay-as-you-go), 그리고 AI 렉 진단 파이프라인을 지원합니다.
             </p>
         </div>
         <button onclick="handleStartDeploy()" class="gradient-btn px-7 py-4 rounded-2xl font-black text-sm text-white shadow-xl shadow-indigo-600/40 hover:scale-105 transition whitespace-nowrap">
@@ -104,7 +102,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
             <div id="emptyState" class="md:col-span-2 glass-card rounded-2xl p-12 text-center space-y-3">
                 <div class="text-4xl">🕹️</div>
                 <p class="text-sm font-semibold text-slate-300">아직 생성된 마인크래프트 서버가 없습니다.</p>
-                <p class="text-xs text-slate-500">상단의 [새 서버 생성하기] 버튼을 눌러 건축, 야생, 또는 고급 서버를 개설하십시오. (신규 가입 3,000원 지원)</p>
+                <p class="text-xs text-slate-500">상단의 [새 서버 생성하기] 버튼을 눌러 첫 서버를 개설하십시오. (신규 가입 3,000원 지원)</p>
             </div>
         </div>
     </div>
@@ -142,7 +140,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- Create Server Modal with 3 Presets -->
+    <!-- Create Server Modal -->
     <div id="createModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 z-50">
         <div class="glass-card max-w-2xl w-full rounded-2xl p-6 md:p-8 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -153,7 +151,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                 <button onclick="closeCreateModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
             </div>
 
-            <!-- 3 Presets Selection Cards -->
+            <!-- Presets Selection Cards -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div onclick="selectPreset('BUILDER_FLAT')" id="preset_BUILDER_FLAT" class="preset-card glass-card p-4 rounded-xl space-y-2">
                     <div class="text-2xl">🏰</div>
@@ -172,7 +170,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                 <div onclick="selectPreset('ADVANCED_CUSTOM')" id="preset_ADVANCED_CUSTOM" class="preset-card glass-card p-4 rounded-xl space-y-2">
                     <div class="text-2xl">⚙️</div>
                     <div class="font-bold text-white text-xs">고급 서버 개설</div>
-                    <p class="text-[10px] text-slate-400 leading-tight">Paper/Fabric/NeoForge 코어, 3대 버전, RAM 커스텀 선택</p>
+                    <p class="text-[10px] text-slate-400 leading-tight">Forge/Fabric/NeoForge/Velocity, 스냅샷 포함 모든 버전</p>
                     <span class="inline-block text-[9px] px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 font-semibold">전문가용</span>
                 </div>
             </div>
@@ -183,7 +181,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                         <label class="block font-semibold text-slate-300 mb-1">서버 명칭</label>
-                        <input type="text" id="srv_name" required placeholder="예: 우리들의 야생 서버" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500">
+                        <input type="text" id="srv_name" required placeholder="예: 우리들의 마인크래프트 서버" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500">
                     </div>
                     <div>
                         <label class="block font-semibold text-slate-300 mb-1">접속 도메인 (id.domain.com)</label>
@@ -194,25 +192,32 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                     </div>
                 </div>
 
-                <!-- Advanced Options Container (Visible only when ADVANCED_CUSTOM is active) -->
+                <!-- Advanced Options Container -->
                 <div id="advancedOptions" class="hidden p-4 bg-slate-900/90 rounded-xl border border-indigo-500/30 space-y-3">
                     <span class="font-bold text-indigo-300 text-xs flex items-center gap-1">⚙️ 고급 커스텀 환경설정</span>
                     
                     <div class="grid grid-cols-2 gap-3">
                         <div>
-                            <label class="block font-semibold text-slate-300 mb-1">서버 코어</label>
+                            <label class="block font-semibold text-slate-300 mb-1">서버 코어 / 프록시</label>
                             <select id="srv_type" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 outline-none">
                                 <option value="PAPER">Paper (플러그인 최적화)</option>
                                 <option value="FABRIC">Fabric (경량 모드팩)</option>
+                                <option value="FORGE">Forge (공식 일반 Forge)</option>
                                 <option value="NEOFORGE">NeoForge (대형 모드팩)</option>
+                                <option value="VELOCITY">Velocity (고성능 L4 프록시)</option>
+                                <option value="BUNGEECORD">BungeeCord (클래식 프록시)</option>
                             </select>
                         </div>
                         <div>
-                            <label class="block font-semibold text-slate-300 mb-1">마인크래프트 버전 (3대 안정화 버전)</label>
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="font-semibold text-slate-300">마인크래프트 버전</label>
+                                <label class="flex items-center gap-1 text-[10px] text-indigo-400 cursor-pointer">
+                                    <input type="checkbox" id="showSnapshots" onchange="loadVersionOptions()" class="rounded bg-slate-950 text-indigo-600 focus:ring-0">
+                                    스냅샷 포함
+                                </label>
+                            </div>
                             <select id="srv_version" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 font-mono outline-none">
-                                <option value="1.20.4" selected>1.20.4 (최신 안정화 LTS 권장)</option>
-                                <option value="1.20.2">1.20.2 (안정화 릴리즈)</option>
-                                <option value="1.16.5">1.16.5 (클래식 모드팩/플러그인 표준)</option>
+                                <option value="1.20.4">1.20.4 (LTS 최신 안정화)</option>
                             </select>
                         </div>
                     </div>
@@ -228,11 +233,11 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                             </select>
                         </div>
                         <div>
-                            <label class="block font-semibold text-slate-300 mb-1">하드웨어 스토리지 티어</label>
+                            <label class="block font-semibold text-slate-300 mb-1">하드웨어 과금 티어 (클러스터 노드)</label>
                             <select id="srv_tier" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 outline-none">
-                                <option value="high_nvme" selected>고성능 NVMe (1.3x 배율)</option>
-                                <option value="standard_ssd">표준 SSD (1.0x 배율)</option>
-                                <option value="extreme_dedicated">단독 전용 Extreme (1.8x 배율)</option>
+                                <option value="high_nvme">초고속 NVMe (1.3x)</option>
+                                <option value="standard_ssd">표준 SSD (1.0x)</option>
+                                <option value="extreme_dedicated">단독 전용 Extreme (1.8x)</option>
                             </select>
                         </div>
                     </div>
@@ -269,6 +274,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
         let currentUser = JSON.parse(localStorage.getItem('mc_user')) || null;
         let myServers = [];
         let curRconId = null;
+        let mojangManifest = null;
 
         function updateAuthState() {
             const outBox = document.getElementById('authLoggedOut');
@@ -290,7 +296,11 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
             if (!currentUser) { openLoginModal(); }
             else { openCreateModal(); }
         }
-        function openCreateModal() { document.getElementById('createModal').classList.remove('hidden'); }
+        function openCreateModal() {
+            loadVersionOptions();
+            loadActiveTiers();
+            document.getElementById('createModal').classList.remove('hidden');
+        }
         function closeCreateModal() { document.getElementById('createModal').classList.add('hidden'); }
         function logout() {
             localStorage.removeItem('mc_user');
@@ -311,6 +321,62 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
             } else {
                 advBox.classList.add('hidden');
             }
+        }
+
+        async function loadVersionOptions() {
+            const select = document.getElementById('srv_version');
+            const showSnapshots = document.getElementById('showSnapshots').checked;
+
+            if (!mojangManifest) {
+                try {
+                    const resp = await fetch('/api/v1/servers/versions');
+                    mojangManifest = await resp.json();
+                } catch (e) {
+                    mojangManifest = { releases: ["1.20.4", "1.20.2", "1.20.1", "1.19.4", "1.16.5", "1.12.2"], snapshots: ["24w14a", "24w09a"] };
+                }
+            }
+
+            select.innerHTML = '';
+            
+            // 릴리즈 버전 목록
+            const optGroupRel = document.createElement('optgroup');
+            optGroupRel.label = "정식 릴리즈 (Official Releases)";
+            mojangManifest.releases.forEach(ver => {
+                const opt = document.createElement('option');
+                opt.value = ver;
+                opt.innerText = ver + (ver === mojangManifest.latest_release ? " (최신 LTS)" : "");
+                optGroupRel.appendChild(opt);
+            });
+            select.appendChild(optGroupRel);
+
+            // 스냅샷 버전 목록 (체크 시)
+            if (showSnapshots && mojangManifest.snapshots) {
+                const optGroupSnap = document.createElement('optgroup');
+                optGroupSnap.label = "개발 스냅샷 (Snapshots / Pre-releases)";
+                mojangManifest.snapshots.forEach(ver => {
+                    const opt = document.createElement('option');
+                    opt.value = ver;
+                    opt.innerText = ver + " (스냅샷)";
+                    optGroupSnap.appendChild(opt);
+                });
+                select.appendChild(optGroupSnap);
+            }
+        }
+
+        async function loadActiveTiers() {
+            try {
+                const resp = await fetch('/api/v1/nodes/tiers');
+                const tiers = await resp.json();
+                const select = document.getElementById('srv_tier');
+                select.innerHTML = '';
+                tiers.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t.tier_id;
+                    opt.innerText = `${t.name} (${t.multiplier}x 배율)`;
+                    if (t.tier_id === 'high_nvme') opt.selected = true;
+                    select.appendChild(opt);
+                });
+            } catch (e) {}
         }
 
         document.getElementById('authForm').addEventListener('submit', async (e) => {
@@ -390,7 +456,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                 });
                 const res = await resp.json();
                 if (resp.ok) {
-                    alert(`🎉 [${preset}] 서버 [${payload.name}] 개설 완료!\\n접속 주소: ${res.connect_address}\\n탑재 플러그인: ${(res.injected_plugins || []).join(', ')}`);
+                    alert(`🎉 [${payload.server_type}] 서버 [${payload.name}] 개설 완료!\\n접속 주소: ${res.connect_address}\\n탑재 플러그인: ${(res.injected_plugins || []).join(', ')}`);
                     myServers.push({
                         id: res.server_id,
                         name: payload.name,
@@ -429,7 +495,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
                 if (srv.preset === 'SURVIVAL_SMP') {
                     presetBadge = '<span class="px-2 py-0.5 bg-emerald-950 text-emerald-300 rounded text-[10px] font-bold">🌲 심플 야생 (SMP)</span>';
                 } else if (srv.preset === 'ADVANCED_CUSTOM') {
-                    presetBadge = '<span class="px-2 py-0.5 bg-purple-950 text-purple-300 rounded text-[10px] font-bold">⚙️ 고급 커스텀</span>';
+                    presetBadge = '<span class="px-2 py-0.5 bg-purple-950 text-purple-300 rounded text-[10px] font-bold">⚙️ 고급 ' + srv.type + '</span>';
                 }
 
                 card.innerHTML = `
@@ -507,7 +573,7 @@ USER_PORTAL_HTML = """<!DOCTYPE html>
 </html>"""
 
 # ==============================================================================
-# 2. 어드민 전용 통합 제어 센터 UI (보안 인증 모달 & 토큰 게이트웨이 탑재)
+# 2. 어드민 전용 통합 제어 센터 UI (커스텀 티어 생성, 스왑 비율 설정 탑재)
 # ==============================================================================
 ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
 <html lang="ko">
@@ -525,7 +591,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
 </head>
 <body class="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
 
-    <!-- Admin Authentication Modal (Screen Lock if not authenticated) -->
+    <!-- Admin Authentication Modal -->
     <div id="adminAuthGateModal" class="fixed inset-0 bg-black/90 backdrop-blur-xl flex items-center justify-center p-4 z-50">
         <div class="card max-w-md w-full rounded-2xl p-8 space-y-5 shadow-2xl border border-indigo-500/40">
             <div class="text-center space-y-2">
@@ -554,7 +620,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                 <span class="p-2 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-600/30">⚙️</span>
                 NextGen MC 어드민 통합 제어 센터
             </h1>
-            <p class="text-xs text-slate-400 mt-1">과금 티어 동적 관리 • 회원 계정 & 크레딧 • 민원 처리 • 전체 서버 관리 • Google OAuth & LLM</p>
+            <p class="text-xs text-slate-400 mt-1">커스텀 티어 생성(노드 묶기) • 스왑/ZRAM 비율 설정 • 회원 관리 • 전체 서버 관리</p>
         </div>
         <div class="flex items-center gap-3">
             <a href="/" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold">👉 유저 대시보드</a>
@@ -565,7 +631,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
     <!-- 5-Tab Navigation -->
     <div class="flex flex-wrap gap-2 border-b border-slate-800 pb-3">
         <button onclick="switchTab('billing')" id="tab_billing" class="tab-btn active px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-indigo-600 transition flex items-center gap-2">
-            💰 1. 과금 티어 & 노드 제어
+            💰 1. 과금 요율 & 커스텀 티어 & 스왑
         </button>
         <button onclick="switchTab('users')" id="tab_users" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-indigo-600 transition flex items-center gap-2">
             👥 2. 회원 계정 & 크레딧 관리
@@ -581,11 +647,12 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
         </button>
     </div>
 
-    <!-- TAB 1: Billing & Nodes -->
+    <!-- TAB 1: Billing, Custom Tiers & Swap Configuration -->
     <div id="section_billing" class="space-y-6">
+        <!-- Billing Rates Form -->
         <div class="card rounded-2xl p-6 space-y-5">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h3 class="font-bold text-white text-base">💰 실시간 종량제 과금 요율 동적 설정</h3>
+                <h3 class="font-bold text-white text-base">💰 실시간 종량제 기본 요율 설정</h3>
                 <button onclick="loadBillingRates()" class="text-xs text-indigo-400 hover:underline">새로고침</button>
             </div>
             <form id="ratesForm" class="grid grid-cols-1 md:grid-cols-3 gap-5 text-xs">
@@ -604,26 +671,109 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                     <input type="number" step="0.01" id="rate_player" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none" required>
                     <span class="text-slate-500 text-[10px]">동시 접속자 1인당 단가</span>
                 </div>
-                <div class="md:col-span-3 pt-3 border-t border-slate-800 grid grid-cols-3 gap-3">
-                    <div>
-                        <span class="font-bold text-slate-300">Standard SSD 배율</span>
-                        <input type="number" step="0.1" id="rate_tier_std" class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg mt-1">
-                    </div>
-                    <div>
-                        <span class="font-bold text-indigo-400">High NVMe 배율</span>
-                        <input type="number" step="0.1" id="rate_tier_nvme" class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg mt-1">
-                    </div>
-                    <div>
-                        <span class="font-bold text-amber-400">Extreme Dedicated 배율</span>
-                        <input type="number" step="0.1" id="rate_tier_ext" class="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg mt-1">
-                    </div>
-                </div>
                 <div class="md:col-span-3 flex justify-end">
-                    <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/30">요율 실시간 저장</button>
+                    <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/30">기본 요율 저장</button>
                 </div>
             </form>
         </div>
 
+        <!-- Global Swap & ZRAM Ratio Configuration -->
+        <div class="card rounded-2xl p-6 space-y-5 border border-indigo-500/30">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div>
+                    <h3 class="font-bold text-white text-base">🛡️ 글로벌 메모리 & 스왑(Swap / ZRAM / NVMe) 비율 설정</h3>
+                    <p class="text-xs text-slate-400">컨테이너 생성 시 RAM 대비 페이징 스왑 할당량 및 커널 Swappiness를 제어합니다.</p>
+                </div>
+                <button onclick="loadSwapConfig()" class="text-xs text-indigo-400 hover:underline">새로고침</button>
+            </div>
+            <form id="swapConfigForm" class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                <div>
+                    <label class="block font-bold text-slate-300 mb-1">RAM 대비 스왑 할당 배율 (Swap Ratio)</label>
+                    <div class="flex items-center gap-2">
+                        <input type="number" step="0.1" min="0.0" max="5.0" id="cfg_swap_ratio" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono" required>
+                        <span class="text-slate-400 font-bold">x 배</span>
+                    </div>
+                    <span class="text-slate-500 text-[10px]">예: 1.5 설정 시 4GB RAM 서버에 6GB 스왑 할당</span>
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-300 mb-1">ZRAM 압축 알고리즘</label>
+                    <select id="cfg_zram_algo" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100">
+                        <option value="zstd">zstd (고압축 & 균형 성능 - 권장)</option>
+                        <option value="lz4">lz4 (초고속 저지연)</option>
+                        <option value="lzo-rle">lzo-rle (구형 커널 호환)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-300 mb-1">커널 Swappiness (0 ~ 100)</label>
+                    <input type="number" min="0" max="100" id="cfg_swappiness" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono" required>
+                    <span class="text-slate-500 text-[10px]">기본 권장값: 60</span>
+                </div>
+                <div class="md:col-span-3 flex justify-end">
+                    <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/30">스왑 정책 실시간 저장</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Custom Tier Creator & Node Grouping -->
+        <div class="card rounded-2xl p-6 space-y-5">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div>
+                    <h3 class="font-bold text-white text-base">🏷️ 커스텀 하드웨어 티어 생성 & 노드 묶기 (Node Grouping)</h3>
+                    <p class="text-xs text-slate-400">특정 고성능 워커 노드들을 그룹화하여 유저가 선택할 수 있는 유료 티어로 판매합니다.</p>
+                </div>
+                <button onclick="loadCustomTiers()" class="text-xs text-indigo-400 hover:underline">새로고침</button>
+            </div>
+
+            <!-- Create Tier Form -->
+            <form id="tierCreateForm" class="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-slate-900/80 rounded-xl border border-slate-800 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-300 mb-1">티어 ID (영문/숫자)</label>
+                    <input type="text" id="new_tier_id" required pattern="^[a-z0-9_-]{3,32}$" placeholder="예: gpu_dedicated" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 font-mono outline-none">
+                </div>
+                <div>
+                    <label class="block font-semibold text-slate-300 mb-1">티어 표시 이름</label>
+                    <input type="text" id="new_tier_name" required placeholder="예: 단독 Ryzen 9950X 티어" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 outline-none">
+                </div>
+                <div>
+                    <label class="block font-semibold text-slate-300 mb-1">과금 배율 (Multiplier)</label>
+                    <input type="number" step="0.1" min="0.1" max="10.0" id="new_tier_mult" value="1.5" required class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 font-mono outline-none">
+                </div>
+                <div>
+                    <label class="block font-semibold text-slate-300 mb-1">할당할 노드 선택 (묶기)</label>
+                    <select id="new_tier_nodes" multiple class="w-full px-3 py-1 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 font-mono h-16">
+                        <option value="master-local" selected>Master Node (master-local)</option>
+                    </select>
+                </div>
+                <div class="md:col-span-3">
+                    <label class="block font-semibold text-slate-300 mb-1">티어 상세 설명</label>
+                    <input type="text" id="new_tier_desc" placeholder="유저에게 안내할 하드웨어 사양 설명" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 outline-none">
+                </div>
+                <div class="flex items-end justify-end">
+                    <button type="submit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 font-bold text-white rounded-lg shadow-lg shadow-emerald-600/30">
+                        + 새 티어 생성 & 노드 묶기
+                    </button>
+                </div>
+            </form>
+
+            <!-- Tiers Table -->
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                    <thead class="text-slate-400 uppercase bg-slate-900/80 border-b border-slate-800">
+                        <tr>
+                            <th class="p-3">티어 ID</th>
+                            <th class="p-3">티어 이름</th>
+                            <th class="p-3">과금 배율</th>
+                            <th class="p-3">묶인 노드 목록</th>
+                            <th class="p-3">설명</th>
+                            <th class="p-3 text-right">삭제</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tiersTableBody" class="divide-y divide-slate-800/60 font-mono"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Nodes Resource Monitoring -->
         <div class="card rounded-2xl p-6 space-y-4">
             <h3 class="font-bold text-white text-base">🖥️ 클러스터 노드 현황 & 자원 모니터링</h3>
             <div id="adminNodesGrid" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
@@ -684,20 +834,19 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                     <input type="email" id="adm_user" placeholder="admin@domain.com" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none">
                 </div>
                 <div>
-                    <label class="block font-semibold text-slate-300 mb-1">서버 프리셋</label>
-                    <select id="adm_preset" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none">
-                        <option value="SURVIVAL_SMP">🌲 심플 야생 서버 (SMP)</option>
-                        <option value="BUILDER_FLAT">🏰 심플 건축 서버 (평지)</option>
-                        <option value="ADVANCED_CUSTOM">⚙️ 고급 커스텀 서버</option>
+                    <label class="block font-semibold text-slate-300 mb-1">서버 코어</label>
+                    <select id="adm_core" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 outline-none">
+                        <option value="PAPER">Paper</option>
+                        <option value="FABRIC">Fabric</option>
+                        <option value="FORGE">Forge (일반 Forge)</option>
+                        <option value="NEOFORGE">NeoForge</option>
+                        <option value="VELOCITY">Velocity (프록시)</option>
+                        <option value="BUNGEECORD">BungeeCord (프록시)</option>
                     </select>
                 </div>
                 <div>
                     <label class="block font-semibold text-slate-300 mb-1">마인크래프트 버전</label>
-                    <select id="adm_ver" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono outline-none">
-                        <option value="1.20.4" selected>1.20.4 (LTS 권장)</option>
-                        <option value="1.20.2">1.20.2</option>
-                        <option value="1.16.5">1.16.5</option>
-                    </select>
+                    <input type="text" id="adm_ver" value="1.20.4" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono outline-none">
                 </div>
                 <div>
                     <label class="block font-semibold text-slate-300 mb-1">할당 RAM</label>
@@ -837,6 +986,8 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                     sessionStorage.setItem('mc_admin_token', adminToken);
                     document.getElementById('adminAuthGateModal').classList.add('hidden');
                     loadBillingRates();
+                    loadCustomTiers();
+                    loadSwapConfig();
                     loadAdminNodes();
                 } else {
                     errBox.innerText = data.detail || '마스터 시크릿 암호가 올바르지 않습니다.';
@@ -860,7 +1011,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             document.getElementById('section_' + tabId).classList.remove('hidden');
             document.getElementById('tab_' + tabId).classList.add('active');
 
-            if (tabId === 'billing') { loadBillingRates(); loadAdminNodes(); }
+            if (tabId === 'billing') { loadBillingRates(); loadCustomTiers(); loadSwapConfig(); loadAdminNodes(); }
             if (tabId === 'users') loadAdminUsers();
             if (tabId === 'tickets') loadAdminTickets();
             if (tabId === 'servers') loadAdminServers();
@@ -874,9 +1025,6 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             document.getElementById('rate_base').value = d.base_container_per_min;
             document.getElementById('rate_chunk').value = d.per_chunk_rate;
             document.getElementById('rate_player').value = d.per_player_rate;
-            document.getElementById('rate_tier_std').value = d.tier_multipliers.standard_ssd || 1.0;
-            document.getElementById('rate_tier_nvme').value = d.tier_multipliers.high_nvme || 1.3;
-            document.getElementById('rate_tier_ext').value = d.tier_multipliers.extreme_dedicated || 1.8;
         }
 
         document.getElementById('ratesForm').addEventListener('submit', async (e) => {
@@ -884,20 +1032,100 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             const payload = {
                 base_container_per_min: parseFloat(document.getElementById('rate_base').value),
                 per_chunk_rate: parseFloat(document.getElementById('rate_chunk').value),
-                per_player_rate: parseFloat(document.getElementById('rate_player').value),
-                tier_multipliers: {
-                    standard_ssd: parseFloat(document.getElementById('rate_tier_std').value),
-                    high_nvme: parseFloat(document.getElementById('rate_tier_nvme').value),
-                    extreme_dedicated: parseFloat(document.getElementById('rate_tier_ext').value)
-                }
+                per_player_rate: parseFloat(document.getElementById('rate_player').value)
             };
             await fetch('/api/v1/nodes/admin/billing/rates', {
                 method: 'PUT',
                 headers: getAuthHeaders(),
                 body: JSON.stringify(payload)
             });
-            alert('과금 요율 수정 및 실시간 적용 완료!');
+            alert('기본 과금 요율이 실시간 저장되었습니다!');
         });
+
+        async function loadSwapConfig() {
+            if (!adminToken) return;
+            const resp = await fetch('/api/v1/nodes/admin/swap-config', { headers: getAuthHeaders() });
+            if (resp.status === 401) { adminLogout(); return; }
+            const cfg = await resp.json();
+            document.getElementById('cfg_swap_ratio').value = cfg.swap_ratio;
+            document.getElementById('cfg_zram_algo').value = cfg.zram_compression_algo;
+            document.getElementById('cfg_swappiness').value = cfg.swappiness;
+        }
+
+        document.getElementById('swapConfigForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const payload = {
+                swap_ratio: parseFloat(document.getElementById('cfg_swap_ratio').value),
+                zram_compression_algo: document.getElementById('cfg_zram_algo').value,
+                swappiness: parseInt(document.getElementById('cfg_swappiness').value),
+                enable_generational_zgc: true
+            };
+            await fetch('/api/v1/nodes/admin/swap-config', {
+                method: 'PUT',
+                headers: getAuthHeaders(),
+                body: JSON.stringify(payload)
+            });
+            alert('글로벌 스왑 및 ZRAM 정책이 실시간 적용되었습니다!');
+        });
+
+        async function loadCustomTiers() {
+            if (!adminToken) return;
+            const resp = await fetch('/api/v1/nodes/tiers');
+            const tiers = await resp.json();
+            const tbody = document.getElementById('tiersTableBody');
+            tbody.innerHTML = '';
+            tiers.forEach(t => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="p-3 text-indigo-400 font-bold">${t.tier_id} ${t.is_builtin ? '<span class="text-[10px] text-slate-500">(기본)</span>' : ''}</td>
+                    <td class="p-3 text-white font-semibold">${t.name}</td>
+                    <td class="p-3 text-amber-400 font-bold">${t.multiplier}x</td>
+                    <td class="p-3 text-slate-300">${t.assigned_node_ids.join(', ') || '전체 노드'}</td>
+                    <td class="p-3 text-slate-400">${t.description || '-'}</td>
+                    <td class="p-3 text-right">
+                        ${t.is_builtin ? '-' : `<button onclick="deleteCustomTier('${t.tier_id}')" class="px-2 py-1 bg-rose-600/30 text-rose-300 hover:bg-rose-600 rounded text-[11px]">삭제</button>`}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        document.getElementById('tierCreateForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const nodeSelect = document.getElementById('new_tier_nodes');
+            const selectedNodes = Array.from(nodeSelect.selectedOptions).map(o => o.value);
+
+            const payload = {
+                tier_id: document.getElementById('new_tier_id').value,
+                name: document.getElementById('new_tier_name').value,
+                multiplier: parseFloat(document.getElementById('new_tier_mult').value),
+                description: document.getElementById('new_tier_desc').value,
+                assigned_node_ids: selectedNodes
+            };
+
+            const resp = await fetch('/api/v1/nodes/admin/tiers', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify(payload)
+            });
+            if (resp.ok) {
+                alert(`🎉 커스텀 티어 [${payload.name}] 생성 및 노드 묶기 완료!`);
+                document.getElementById('new_tier_id').value = '';
+                document.getElementById('new_tier_name').value = '';
+                document.getElementById('new_tier_desc').value = '';
+                loadCustomTiers();
+            } else {
+                const res = await resp.json();
+                alert('생성 실패: ' + (res.detail || '오류'));
+            }
+        });
+
+        async function deleteCustomTier(tierId) {
+            if (confirm(`커스텀 티어 [${tierId}]를 삭제하시겠습니까?`)) {
+                await fetch(`/api/v1/nodes/admin/tiers/${tierId}`, { method: 'DELETE', headers: getAuthHeaders() });
+                loadCustomTiers();
+            }
+        }
 
         async function loadAdminNodes() {
             if (!adminToken) return;
@@ -905,8 +1133,17 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             if (resp.status === 401) { adminLogout(); return; }
             const data = await resp.json();
             const container = document.getElementById('adminNodesGrid');
+            const nodeMultiSelect = document.getElementById('new_tier_nodes');
+            
             container.innerHTML = '';
+            nodeMultiSelect.innerHTML = '';
+
             data.nodes.forEach(n => {
+                const opt = document.createElement('option');
+                opt.value = n.node_id;
+                opt.innerText = `${n.node_name} (${n.node_id})`;
+                nodeMultiSelect.appendChild(opt);
+
                 const ramPct = Math.round((n.ram_used_mb / Math.max(n.ram_total_mb, 1)) * 100);
                 const card = document.createElement('div');
                 card.className = 'p-4 bg-slate-900/80 rounded-xl border ' + (n.is_master_node ? 'border-indigo-500/40' : 'border-slate-800') + ' text-xs space-y-3';
@@ -917,7 +1154,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                     </div>
                     <div class="space-y-1 text-slate-400">
                         <div>CPU: <strong class="text-slate-200">${n.cpu_usage_pct.toFixed(1)}%</strong> | RAM: <strong class="text-slate-200">${n.ram_used_mb}MB / ${n.ram_total_mb}MB (${ramPct}%)</strong></div>
-                        <div>활성 컨테이너: <strong class="text-indigo-400">${n.running_containers}</strong> | 배율: <strong class="text-amber-400">${n.billing_multiplier}x</strong></div>
+                        <div>활성 컨테이너: <strong class="text-indigo-400">${n.running_containers}</strong> | 티어: <strong class="text-indigo-300">${n.hardware_tier}</strong> (${n.billing_multiplier}x)</div>
                     </div>
                 `;
                 container.appendChild(card);
@@ -1063,8 +1300,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             const payload = {
                 name: document.getElementById('adm_name').value,
                 domain_slug: document.getElementById('adm_slug').value,
-                preset_type: document.getElementById('adm_preset').value,
-                server_type: "PAPER",
+                server_type: document.getElementById('adm_core').value,
                 mc_version: document.getElementById('adm_ver').value,
                 allocated_ram_mb: parseInt(document.getElementById('adm_ram').value),
                 target_user_id: document.getElementById('adm_user').value || null
@@ -1104,6 +1340,8 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
         verifyAdminAuth().then(isAuth => {
             if (isAuth) {
                 loadBillingRates();
+                loadCustomTiers();
+                loadSwapConfig();
                 loadAdminNodes();
             }
         });
@@ -1155,8 +1393,7 @@ async def health_check():
         "status": "healthy",
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
-        "supported_mc_versions": ["1.20.4", "1.20.2", "1.16.5"],
-        "supported_presets": ["BUILDER_FLAT", "SURVIVAL_SMP", "ADVANCED_CUSTOM"],
+        "supported_server_types": ["PAPER", "FABRIC", "FORGE", "NEOFORGE", "PURPUR", "VELOCITY", "BUNGEECORD"],
         "master_as_worker_active": "master-local" in scheduler.nodes
     }
 

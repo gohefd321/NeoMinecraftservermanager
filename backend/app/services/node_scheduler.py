@@ -1,20 +1,28 @@
 """
-node_scheduler.py - Advanced Node Resource Monitoring & Tier-Aware Scheduler
-Supports: Master-as-Worker, Dynamic Multipliers, Hard Threshold Guard, Robust ZRAM Detection
+node_scheduler.py - Advanced Node Resource Monitoring, Dynamic Custom Tiers & Swap Configuration
+Supports:
+- Master-as-Worker Local Container Support
+- Dynamic Custom Tiers (Grouping Nodes & Custom Multipliers)
+- Global Memory & Swap Ratio (ZRAM/NVMe) Configuration
+- Tier-Aware Node Scheduler & Overload Guard
 """
 import time
 import os
 import subprocess
 import psutil
 from typing import Dict, List, Optional
+from datetime import datetime
 from fastapi import HTTPException
-from app.models.schema import HardwareTier, NodeHealthReport, NodeRegisterRequest
+from app.models.schema import (
+    HardwareTier, NodeHealthReport, NodeRegisterRequest,
+    CustomTierCreate, CustomTierResponse, SwapConfigModel
+)
 
 # 기본 하드웨어 티어별 과금 배율
 DEFAULT_TIER_MULTIPLIERS: Dict[str, float] = {
-    HardwareTier.STANDARD_SSD.value: 1.0,
-    HardwareTier.HIGH_NVME.value: 1.3,
-    HardwareTier.EXTREME_DEDICATED.value: 1.8,
+    "standard_ssd": 1.0,
+    "high_nvme": 1.3,
+    "extreme_dedicated": 1.8,
 }
 
 MAX_RAM_USAGE_RATIO = 0.90
@@ -23,9 +31,8 @@ MAX_CPU_USAGE_PCT = 95.0
 
 
 def get_safe_zram_total_mb() -> int:
-    """ZRAM 총 용량 감지 (zramctl --json 에러 방어 및 /sys, /proc/swaps 파싱)"""
+    """ZRAM 총 용량 감지 (zramctl 에러 방어 및 /sys, /proc/swaps 파싱)"""
     total_mb = 0
-    # 1. /sys/block/zram* 디스크 사이즈 확인
     try:
         sys_zram = "/sys/block"
         if os.path.exists(sys_zram):
@@ -41,7 +48,6 @@ def get_safe_zram_total_mb() -> int:
     except Exception:
         pass
 
-    # 2. zramctl 기본 파싱 fallback (플래그 없이 실행)
     try:
         out = subprocess.check_output(["zramctl", "-b", "--noheadings", "-o", "DISKSIZE"], text=True, stderr=subprocess.DEVNULL)
         for line in out.strip().splitlines():
@@ -59,7 +65,7 @@ class NodeInfo:
         self.node_id = meta.node_id
         self.node_name = meta.node_name
         self.ip_address = meta.ip_address
-        self.hardware_tier = meta.hardware_tier.value if hasattr(meta.hardware_tier, "value") else str(meta.hardware_tier)
+        self.hardware_tier = meta.hardware_tier if isinstance(meta.hardware_tier, str) else meta.hardware_tier.value
         self.is_master_node = meta.is_master_node
         
         if meta.custom_multiplier is not None:
@@ -77,7 +83,92 @@ class NodeInfo:
 class NodeScheduler:
     def __init__(self):
         self.nodes: Dict[str, NodeInfo] = {}
+        
+        # 커스텀 티어 저장소 (기본 3대 빌트인 티어 포함)
+        self.custom_tiers: Dict[str, CustomTierResponse] = {
+            "standard_ssd": CustomTierResponse(
+                tier_id="standard_ssd",
+                name="표준 SSD (Standard)",
+                multiplier=1.0,
+                description="일반적인 엔트리/생존 서버를 위한 경제적인 표준 스토리지",
+                assigned_node_ids=["master-local"],
+                is_builtin=True
+            ),
+            "high_nvme": CustomTierResponse(
+                tier_id="high_nvme",
+                name="초고속 NVMe (High Speed)",
+                multiplier=1.3,
+                description="Gen4/Gen5 NVMe SSD 기반 대규모 엔티티 및 빠른 청크 로딩 지원",
+                assigned_node_ids=["master-local"],
+                is_builtin=True
+            ),
+            "extreme_dedicated": CustomTierResponse(
+                tier_id="extreme_dedicated",
+                name="단독 전용 (Extreme Dedicated)",
+                multiplier=1.8,
+                description="CPU 단독 코어 및 ZRAM 격리 샌드박스를 제공하는 하이엔드 티어",
+                assigned_node_ids=["master-local"],
+                is_builtin=True
+            )
+        }
 
+        # 글로벌 스왑 및 ZRAM 환경설정
+        self.swap_config: SwapConfigModel = SwapConfigModel(
+            swap_ratio=1.5,
+            zram_compression_algo="zstd",
+            swappiness=60,
+            enable_generational_zgc=True
+        )
+
+    # -----------------------------------------------------------------------
+    # 커스텀 티어 생성, 조회, 삭제 (Node Grouping)
+    # -----------------------------------------------------------------------
+    def get_all_tiers(self) -> List[CustomTierResponse]:
+        return list(self.custom_tiers.values())
+
+    def create_custom_tier(self, payload: CustomTierCreate) -> CustomTierResponse:
+        tier_obj = CustomTierResponse(
+            tier_id=payload.tier_id,
+            name=payload.name,
+            multiplier=payload.multiplier,
+            description=payload.description,
+            assigned_node_ids=payload.assigned_node_ids,
+            is_builtin=False,
+            created_at=datetime.utcnow()
+        )
+        self.custom_tiers[payload.tier_id] = tier_obj
+
+        # 할당된 노드들의 기본 티어 및 배율 동기화
+        for node_id in payload.assigned_node_ids:
+            if node_id in self.nodes:
+                self.nodes[node_id].hardware_tier = payload.tier_id
+                self.nodes[node_id].billing_multiplier = payload.multiplier
+
+        print(f"[Scheduler] Custom Tier Created: [{payload.tier_id}] {payload.name} (Multiplier: {payload.multiplier}x, Nodes: {payload.assigned_node_ids})")
+        return tier_obj
+
+    def delete_custom_tier(self, tier_id: str) -> bool:
+        if tier_id in self.custom_tiers:
+            if self.custom_tiers[tier_id].is_builtin:
+                raise HTTPException(status_code=400, detail="기본 내장 티어는 삭제할 수 없습니다.")
+            del self.custom_tiers[tier_id]
+            return True
+        return False
+
+    # -----------------------------------------------------------------------
+    # 스왑 비율 및 ZRAM 설정
+    # -----------------------------------------------------------------------
+    def get_swap_config(self) -> SwapConfigModel:
+        return self.swap_config
+
+    def update_swap_config(self, cfg: SwapConfigModel) -> SwapConfigModel:
+        self.swap_config = cfg
+        print(f"[Scheduler] Global Swap Config Updated: SwapRatio={cfg.swap_ratio}x, Algo={cfg.zram_compression_algo}, Swappiness={cfg.swappiness}")
+        return self.swap_config
+
+    # -----------------------------------------------------------------------
+    # 노드 등록 및 상태 모니터링
+    # -----------------------------------------------------------------------
     def register_node(self, req: NodeRegisterRequest) -> NodeInfo:
         node = NodeInfo(req)
         self.nodes[req.node_id] = node
@@ -114,7 +205,7 @@ class NodeScheduler:
                 node_id="master-local",
                 node_name="Master Node (Local Container Engine)",
                 ip_address="127.0.0.1",
-                hardware_tier=HardwareTier.HIGH_NVME,
+                hardware_tier="high_nvme",
                 custom_multiplier=1.0,
                 total_ram_mb=total_ram_mb,
                 total_zram_mb=total_zram_mb,
@@ -155,7 +246,10 @@ class NodeScheduler:
         except Exception:
             pass
 
-    def select_best_node(self, required_ram_mb: int, preferred_tier: Optional[HardwareTier] = None, preferred_node_id: Optional[str] = None) -> NodeInfo:
+    # -----------------------------------------------------------------------
+    # 지능형 노드 스케줄러 (커스텀 티어 지원)
+    # -----------------------------------------------------------------------
+    def select_best_node(self, required_ram_mb: int, preferred_tier: Optional[str] = None, preferred_node_id: Optional[str] = None) -> NodeInfo:
         if preferred_node_id and preferred_node_id in self.nodes:
             target = self.nodes[preferred_node_id]
             if target.latest_health:
@@ -181,15 +275,10 @@ class NodeScheduler:
             zram_ratio = health.zram_used_mb / max(health.zram_total_mb, 1) if health.zram_total_mb > 0 else 0.0
 
             if ram_ratio >= MAX_RAM_USAGE_RATIO:
-                print(f"[Scheduler] Node {node_id} skipped: RAM limit reached ({ram_ratio*100:.1f}%)")
                 continue
-
             if zram_ratio >= MAX_ZRAM_USAGE_RATIO:
-                print(f"[Scheduler] Node {node_id} skipped: ZRAM limit reached ({zram_ratio*100:.1f}%)")
                 continue
-
             if health.cpu_usage_pct >= MAX_CPU_USAGE_PCT:
-                print(f"[Scheduler] Node {node_id} skipped: CPU overloaded ({health.cpu_usage_pct:.1f}%)")
                 continue
 
             available_ram = health.ram_total_mb - health.ram_used_mb
@@ -207,11 +296,12 @@ class NodeScheduler:
                 detail="클러스터 내 가용 자원이 충분한 노드가 없습니다. 잠시 후 다시 시도하십시오."
             )
 
-        if preferred_tier:
-            tier_val = preferred_tier.value if hasattr(preferred_tier, "value") else str(preferred_tier)
-            tier_matched = [n for n in available_candidates if n.hardware_tier == tier_val]
-            if tier_matched:
-                available_candidates = tier_matched
+        if preferred_tier and preferred_tier in self.custom_tiers:
+            assigned_nodes = self.custom_tiers[preferred_tier].assigned_node_ids
+            if assigned_nodes:
+                tier_matched = [n for n in available_candidates if n.node_id in assigned_nodes]
+                if tier_matched:
+                    available_candidates = tier_matched
 
         def score(n: NodeInfo) -> float:
             h = n.latest_health

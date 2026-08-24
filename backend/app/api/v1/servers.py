@@ -1,9 +1,9 @@
 """
-servers.py - Minecraft Server Management with 3 Supported Versions and 3 Server Presets
-Supported Presets:
-1. BUILDER_FLAT (건축: 평지맵, WorldEdit, CoreProtect, 최적화)
-2. SURVIVAL_SMP (야생: 일반맵, EssentialsX TPA/Home, Spark 렉방지)
-3. ADVANCED_CUSTOM (고급: Paper/Fabric/NeoForge, 3대 버전, 세부 RAM)
+servers.py - Minecraft Server Management Supporting:
+- All Versions (Releases + Snapshots from Mojang Manifest)
+- Core Types: PAPER, FABRIC, FORGE (Official Forge), NEOFORGE, VELOCITY (L4 Proxy), BUNGEECORD
+- Dynamic Custom Tiers & Swap Ratios
+- Presets & Web RCON & AI Profiler
 """
 import uuid
 import os
@@ -16,13 +16,14 @@ from app.models.schema import (
     ServerDeployRequest, ServerControlRequest, RconExecuteRequest,
     TelemetryReportPayload, ServerResponse, AIReportResponse, HelpdeskTicket,
     HelpdeskTicketCreate, TicketResolveRequest, TicketStatus, ServerStatus,
-    ServerType, ServerPreset, SupportedMCVersion
+    ServerType, ServerPreset
 )
 from app.core.security import sanitize_rcon_command, require_admin_auth
 from app.core.database import db
 from app.services.node_scheduler import scheduler
 from app.services.billing_engine import billing_engine
 from app.services.ai_profiler import ai_profiler
+from app.services.version_manifest import version_service
 
 router = APIRouter(prefix="/servers", tags=["Minecraft Servers & Helpdesk"])
 
@@ -69,15 +70,33 @@ MOCK_TICKETS: Dict[str, Dict[str, Any]] = {
     }
 }
 
+# ---------------------------------------------------------------------------
+# 1. Mojang Official Version Manifest (Releases + Snapshots)
+# ---------------------------------------------------------------------------
+@router.get("/versions")
+async def get_available_mc_versions(refresh: bool = False):
+    """
+    모장(Mojang) 공식 API에서 모든 마인크래프트 릴리즈 및 최신 스냅샷(Snapshots) 목록 조회
+    """
+    manifest = await version_service.get_version_manifest(force_refresh=refresh)
+    return manifest
+
+# ---------------------------------------------------------------------------
+# 2. Local Container Deployment Helper (Swap Config Applied)
+# ---------------------------------------------------------------------------
 def deploy_local_container(server_data: Dict[str, Any], req: ServerDeployRequest):
     server_id = server_data["id"]
     port = server_data["port"]
     rcon_port = server_data["rcon_port"]
     ram_mb = server_data["allocated_ram_mb"]
-    swap_mb = int(ram_mb * 1.5)
+    
+    # 어드민이 설정한 글로벌 스왑 비율 적용
+    swap_cfg = scheduler.get_swap_config()
+    swap_mb = int(ram_mb * swap_cfg.swap_ratio)
+
     rcon_pass = server_data["rcon_password"]
     server_type = req.server_type.value if hasattr(req.server_type, "value") else str(req.server_type)
-    mc_version = req.mc_version.value if hasattr(req.mc_version, "value") else str(req.mc_version)
+    mc_version = req.mc_version
     crossplay = "true" if req.enable_crossplay else "false"
 
     script_path = "/opt/nextgen-mc-platform/scripts/deploy-mc-sandbox.sh"
@@ -101,24 +120,25 @@ def deploy_local_container(server_data: Dict[str, Any], req: ServerDeployRequest
 @router.post("/deploy")
 async def deploy_server(req: ServerDeployRequest):
     """
-    서버 생성 요청 (3가지 프리셋 및 3대 버전 지원)
-    1. BUILDER_FLAT: 평지 맵, 월드에딧, 코어프로텍트 자동 탑재
-    2. SURVIVAL_SMP: 야생 맵, EssentialsX (TPA/Home), Spark 자동 탑재
-    3. ADVANCED_CUSTOM: 고급 커스텀 사용자 정의
+    마인크래프트 서버 또는 프록시(Velocity/Bungee) 배포
+    - 스냅샷 포함 모든 버전 지원
+    - 일반 Forge, NeoForge, Paper, Fabric, Velocity, BungeeCord 완벽 지원
+    - 커스텀 티어(Node Grouping) 자동 스케줄링
     """
-    # 프리셋별 기본 파라미터 보정
     injected_plugins = []
-    actual_version = req.mc_version.value if hasattr(req.mc_version, "value") else str(req.mc_version)
+    actual_version = req.mc_version
     actual_server_type = req.server_type
 
     if req.preset_type == ServerPreset.BUILDER_FLAT:
         actual_server_type = ServerType.PAPER
-        actual_version = "1.20.4"
         injected_plugins = ["FastAsyncWorldEdit", "CoreProtect", "Chunky", "Spark"]
     elif req.preset_type == ServerPreset.SURVIVAL_SMP:
         actual_server_type = ServerType.PAPER
-        actual_version = "1.20.4"
         injected_plugins = ["EssentialsX (TPA, Spawn, Home)", "Chunky", "Spark"]
+    elif req.server_type == ServerType.VELOCITY:
+        injected_plugins = ["Velocity L4 Forwarding", "RedisBungeeBridge"]
+    elif req.server_type == ServerType.BUNGEECORD:
+        injected_plugins = ["BungeeGuard", "RedisBungee"]
 
     assigned_node = scheduler.select_best_node(
         required_ram_mb=req.allocated_ram_mb,
@@ -168,6 +188,8 @@ async def deploy_server(req: ServerDeployRequest):
         "status": "success",
         "server_id": server_id,
         "connect_address": f"{req.domain_slug}.domain.com (Port 25565 - No port required)",
+        "server_type": actual_server_type,
+        "mc_version": actual_version,
         "preset_type": req.preset_type,
         "assigned_node": assigned_node.node_name,
         "node_id": assigned_node.node_id,
@@ -176,7 +198,7 @@ async def deploy_server(req: ServerDeployRequest):
         "billing_multiplier": assigned_node.billing_multiplier,
         "allocated_ram_mb": req.allocated_ram_mb,
         "injected_plugins": injected_plugins,
-        "message": f"[{req.preset_type.value}] 프리셋 기반 서버 [{req.name}]가 성공적으로 배포되었습니다."
+        "message": f"[{actual_server_type}] 버전 {actual_version} 서버 [{req.name}]가 성공적으로 배포되었습니다."
     }
 
 @router.post("/{server_id}/rcon")

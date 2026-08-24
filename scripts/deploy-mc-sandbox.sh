@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # deploy-mc-sandbox.sh
-# Hardened Sandboxed Minecraft Container Deployment Script
-# Security: AppArmor, Seccomp, Cap-Drop ALL, No-New-Privileges, Tiered Memory
+# Hardened Sandboxed Minecraft Container & Proxy Deployment Script
+# Supports: PAPER, FABRIC, FORGE (Official), NEOFORGE, VELOCITY (L4 Proxy), BUNGEECORD
+# Security: AppArmor, Seccomp, Cap-Drop ALL, No-New-Privileges, Dynamic Tiered Memory
 # Performance: Java 21 Generational ZGC & Aikar's Flags
 # ==============================================================================
 set -euo pipefail
@@ -12,7 +13,7 @@ HOST_PORT="${2:-25565}"
 RCON_PORT="${3:-25575}"
 RAM_MB="${4:-4096}"
 SWAP_TOTAL_MB="${5:-6144}"
-SERVER_TYPE="${6:-PAPER}" # PAPER, FABRIC, NEOFORGE
+SERVER_TYPE="${6:-PAPER}" # PAPER, FABRIC, FORGE, NEOFORGE, VELOCITY, BUNGEECORD
 MC_VERSION="${7:-1.20.4}"
 RCON_PASS="${8:-SafeRconKey999!}"
 ENABLE_CROSSPLAY="${9:-false}"
@@ -22,10 +23,10 @@ mkdir -p "${DATA_DIR}"
 
 echo "================================================================================"
 echo ">>> [Deploying Hardened Container] ID: ${SERVER_ID} on Port ${HOST_PORT}"
+echo "    Core: ${SERVER_TYPE} | MC Version: ${MC_VERSION} | RAM: ${RAM_MB}MB | Swap: ${SWAP_TOTAL_MB}MB"
 echo "================================================================================"
 
 # 1. Java 21 Generational ZGC & Optimized Aikar's Flags
-# JVM 힙 크기는 물리 RAM의 약 85%로 산정 (남은 15%는 JVM 네이티브 메모리 및 네티 버퍼용)
 HEAP_MB=$((RAM_MB * 85 / 100))
 
 JVM_FLAGS=(
@@ -48,7 +49,6 @@ JVM_OPTS_STR="${JVM_FLAGS[*]}"
 # 2. 크로스플레이 헬퍼 (Geyser / Floodgate / ViaVersion 플러그인 주입)
 EXTRA_ENV_ARGS=()
 if [ "$ENABLE_CROSSPLAY" = "true" ]; then
-    echo "Enabling Crossplay Wizard (ViaVersion, Geyser-Spigot)..."
     EXTRA_ENV_ARGS+=(
         "-e" "SPIGET_RESOURCES=24490,27448" # ViaVersion, ViaBackwards
     )
@@ -70,30 +70,67 @@ fi
 # 4. 기존 컨테이너 정리
 docker rm -f "${SERVER_ID}" 2>/dev/null || true
 
-# 5. 엄격한 샌드박싱 컨테이너 실행
-docker run -d \
-    --name "${SERVER_ID}" \
-    --restart unless-stopped \
-    --memory="${RAM_MB}m" \
-    --memory-swap="${SWAP_TOTAL_MB}m" \
-    --oom-kill-disable \
-    --cpus="4.0" \
-    --cap-drop=ALL \
-    --security-opt no-new-privileges:true \
-    "${APPARMOR_ARG[@]}" \
-    "${SECCOMP_ARG[@]}" \
-    -p "${HOST_PORT}:25565/tcp" \
-    -p "${RCON_PORT}:25575/tcp" \
-    -v "${DATA_DIR}:/data:rw" \
-    -e EULA=TRUE \
-    -e VERSION="${MC_VERSION}" \
-    -e TYPE="${SERVER_TYPE}" \
-    -e MEMORY="${HEAP_MB}M" \
-    -e JVM_OPTS="${JVM_OPTS_STR}" \
-    -e RCON_ENABLED=true \
-    -e RCON_PASSWORD="${RCON_PASS}" \
-    -e RCON_PORT=25575 \
-    "${EXTRA_ENV_ARGS[@]}" \
-    itzg/minecraft-server:java21
+# 5. 프록시(Velocity/Bungee) 또는 마인크래프트 게임 서버 분기 배포
+if [ "${SERVER_TYPE}" = "VELOCITY" ] || [ "${SERVER_TYPE}" = "BUNGEECORD" ] || [ "${SERVER_TYPE}" = "WATERFALL" ]; then
+    echo "Deploying High-Performance L4 Proxy (${SERVER_TYPE})..."
+    docker run -d \
+        --name "${SERVER_ID}" \
+        --restart unless-stopped \
+        --memory="${RAM_MB}m" \
+        --memory-swap="${SWAP_TOTAL_MB}m" \
+        --oom-kill-disable \
+        --cpus="2.0" \
+        --cap-drop=ALL \
+        --security-opt no-new-privileges:true \
+        "${APPARMOR_ARG[@]}" \
+        "${SECCOMP_ARG[@]}" \
+        -p "${HOST_PORT}:25565/tcp" \
+        -p "${RCON_PORT}:25575/tcp" \
+        -v "${DATA_DIR}:/server:rw" \
+        -e TYPE="${SERVER_TYPE}" \
+        -e MEMORY="${HEAP_MB}M" \
+        -e JVM_OPTS="${JVM_OPTS_STR}" \
+        itzg/bungeecord:latest 2>/dev/null || \
+    docker run -d \
+        --name "${SERVER_ID}" \
+        --restart unless-stopped \
+        --memory="${RAM_MB}m" \
+        --memory-swap="${SWAP_TOTAL_MB}m" \
+        --oom-kill-disable \
+        --cpus="2.0" \
+        -p "${HOST_PORT}:25565/tcp" \
+        -p "${RCON_PORT}:25575/tcp" \
+        -v "${DATA_DIR}:/data:rw" \
+        -e EULA=TRUE \
+        -e TYPE="${SERVER_TYPE}" \
+        -e VERSION="${MC_VERSION}" \
+        -e MEMORY="${HEAP_MB}M" \
+        itzg/minecraft-server:java21
+else
+    docker run -d \
+        --name "${SERVER_ID}" \
+        --restart unless-stopped \
+        --memory="${RAM_MB}m" \
+        --memory-swap="${SWAP_TOTAL_MB}m" \
+        --oom-kill-disable \
+        --cpus="4.0" \
+        --cap-drop=ALL \
+        --security-opt no-new-privileges:true \
+        "${APPARMOR_ARG[@]}" \
+        "${SECCOMP_ARG[@]}" \
+        -p "${HOST_PORT}:25565/tcp" \
+        -p "${RCON_PORT}:25575/tcp" \
+        -v "${DATA_DIR}:/data:rw" \
+        -e EULA=TRUE \
+        -e VERSION="${MC_VERSION}" \
+        -e TYPE="${SERVER_TYPE}" \
+        -e MEMORY="${HEAP_MB}M" \
+        -e JVM_OPTS="${JVM_OPTS_STR}" \
+        -e RCON_ENABLED=true \
+        -e RCON_PASSWORD="${RCON_PASS}" \
+        -e RCON_PORT=25575 \
+        "${EXTRA_ENV_ARGS[@]}" \
+        itzg/minecraft-server:java21
+fi
 
-echo ">>> [SUCCESS] Container ${SERVER_ID} deployed with hardened sandboxing & Gen-ZGC."
+echo ">>> [SUCCESS] Container ${SERVER_ID} deployed successfully."

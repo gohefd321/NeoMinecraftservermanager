@@ -1,7 +1,10 @@
 """
 schema.py - Pydantic Request/Response Models and Enums (Pydantic v2 Compatible)
-Supported Minecraft Versions: Exactly 3 Versions ("1.20.4", "1.20.2", "1.16.5")
-Supported Presets: Creative Builder, Survival SMP, Custom Advanced
+Supports:
+- Full Server Types: PAPER, FABRIC, FORGE, NEOFORGE, PURPUR, VELOCITY, BUNGEECORD, WATERFALL
+- Mojang Full Version Manifest (Releases + Snapshots)
+- Dynamic Custom Tiers (Node Grouping)
+- Global Memory & Swap Ratio (ZRAM/NVMe) Configuration
 """
 from enum import Enum
 from typing import List, Optional, Dict, Any
@@ -12,25 +15,26 @@ from pydantic import BaseModel, Field, EmailStr
 # Enums
 # ---------------------------------------------------------------------------
 class HardwareTier(str, Enum):
-    STANDARD_SSD = "standard_ssd"           # 1.0x 기본 배율
-    HIGH_NVME = "high_nvme"                 # 1.3x 기본 배율
-    EXTREME_DEDICATED = "extreme_dedicated" # 1.8x 기본 배율
+    STANDARD_SSD = "standard_ssd"           # 기본 SSD
+    HIGH_NVME = "high_nvme"                 # 고성능 NVMe
+    EXTREME_DEDICATED = "extreme_dedicated" # 단독 전용
+    CUSTOM = "custom"                       # 어드민 생성 커스텀 티어
 
 class ServerType(str, Enum):
     PAPER = "PAPER"
     FABRIC = "FABRIC"
+    FORGE = "FORGE"                         # 일반 Forge
     NEOFORGE = "NEOFORGE"
     PURPUR = "PURPUR"
+    VELOCITY = "VELOCITY"                   # Velocity L4 Proxy
+    BUNGEECORD = "BUNGEECORD"               # BungeeCord Proxy
+    WATERFALL = "WATERFALL"                 # Waterfall Proxy
 
 class ServerPreset(str, Enum):
-    BUILDER_FLAT = "BUILDER_FLAT"       # 건축 서버 (평지, 월드에딧, 최적화 플러그인)
-    SURVIVAL_SMP = "SURVIVAL_SMP"       # 야생 서버 (야생맵, TPA/Home 플러그인, 최적화 플러그인)
-    ADVANCED_CUSTOM = "ADVANCED_CUSTOM" # 고급 사용자 맞춤 개설
-
-class SupportedMCVersion(str, Enum):
-    V_1_20_4 = "1.20.4"
-    V_1_20_2 = "1.20.2"
-    V_1_16_5 = "1.16.5"
+    BUILDER_FLAT = "BUILDER_FLAT"           # 건축 서버 (평지, 월드에딧, 최적화)
+    SURVIVAL_SMP = "SURVIVAL_SMP"           # 야생 서버 (야생맵, TPA/Home, Spark)
+    ADVANCED_CUSTOM = "ADVANCED_CUSTOM"     # 고급 커스텀 서버 (모든 버전/코어/프록시)
+    PROXY_NETWORK = "PROXY_NETWORK"         # Velocity / BungeeCord 프록시 게이트웨이
 
 class ServerStatus(str, Enum):
     RUNNING = "RUNNING"
@@ -46,29 +50,38 @@ class TicketStatus(str, Enum):
     CLOSED = "CLOSED"
 
 # ---------------------------------------------------------------------------
+# Custom Tier (Node Grouping) & Swap Configuration Models
+# ---------------------------------------------------------------------------
+class CustomTierCreate(BaseModel):
+    tier_id: str = Field(..., pattern=r"^[a-z0-9_-]{3,32}$")
+    name: str = Field(..., min_length=2, max_length=64)
+    multiplier: float = Field(..., ge=0.1, le=10.0)
+    description: str = Field(default="", max_length=256)
+    assigned_node_ids: List[str] = Field(default_factory=list)
+
+class CustomTierResponse(BaseModel):
+    tier_id: str
+    name: str
+    multiplier: float
+    description: str
+    assigned_node_ids: List[str]
+    is_builtin: bool = False
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class SwapConfigModel(BaseModel):
+    swap_ratio: float = Field(default=1.5, ge=0.0, le=5.0, description="RAM 대비 스왑 할당 비율 (예: 1.5배)")
+    zram_compression_algo: str = Field(default="zstd", description="ZRAM 압축 알고리즘 (zstd, lz4, lzo-rle)")
+    swappiness: int = Field(default=60, ge=0, le=200, description="커널 swappiness 수치")
+    enable_generational_zgc: bool = Field(default=True, description="JDK 21+ Generational ZGC 기본 활성화 여부")
+
+# ---------------------------------------------------------------------------
 # Dynamic Billing Configuration
 # ---------------------------------------------------------------------------
 class BillingRateConfig(BaseModel):
-    base_container_per_min: float = Field(
-        default=0.50, ge=0.0, le=100.0,
-        description="컨테이너 분당 기본 유지비용 (KRW)"
-    )
-    per_chunk_rate: float = Field(
-        default=0.0010, ge=0.0, le=1.0,
-        description="로드된 청크 1개당 분당 요율 (KRW)"
-    )
-    per_player_rate: float = Field(
-        default=0.1000, ge=0.0, le=10.0,
-        description="접속 플레이어 1인당 분당 요율 (KRW)"
-    )
-    tier_multipliers: Dict[str, float] = Field(
-        default={
-            HardwareTier.STANDARD_SSD.value: 1.0,
-            HardwareTier.HIGH_NVME.value: 1.3,
-            HardwareTier.EXTREME_DEDICATED.value: 1.8,
-        },
-        description="하드웨어 스펙 티어별 과금 배율"
-    )
+    base_container_per_min: float = Field(default=0.50, ge=0.0, le=100.0)
+    per_chunk_rate: float = Field(default=0.0010, ge=0.0, le=1.0)
+    per_player_rate: float = Field(default=0.1000, ge=0.0, le=10.0)
+    tier_multipliers: Dict[str, float] = Field(default_factory=dict)
 
 class NodeMultiplierUpdate(BaseModel):
     node_id: str
@@ -83,7 +96,7 @@ class UserRegisterRequest(BaseModel):
     oauth_token: str
     is_adult_verified: bool = Field(
         ...,
-        description="대한민국 청소년 보호법 및 이용약관에 따른 19세 이상 법정 성인 확인 필수 체크박스"
+        description="19세 이상 법정 성인 확인 필수 체크박스"
     )
 
 class UserResponse(BaseModel):
@@ -106,7 +119,7 @@ class NodeRegisterRequest(BaseModel):
     node_id: str
     node_name: str
     ip_address: str
-    hardware_tier: HardwareTier = HardwareTier.STANDARD_SSD
+    hardware_tier: str = "standard_ssd"
     custom_multiplier: Optional[float] = None
     total_ram_mb: int
     total_zram_mb: int
@@ -126,16 +139,16 @@ class NodeHealthReport(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 # ---------------------------------------------------------------------------
-# Minecraft Server Models (3 Presets & Exact 3 Versions)
+# Minecraft Server Models (Full Versions & Proxies)
 # ---------------------------------------------------------------------------
 class ServerDeployRequest(BaseModel):
     name: str = Field(..., min_length=2, max_length=32)
     domain_slug: str = Field(..., pattern=r"^[a-z0-9-]{3,32}$")
     preset_type: ServerPreset = ServerPreset.SURVIVAL_SMP
     server_type: ServerType = ServerType.PAPER
-    mc_version: SupportedMCVersion = SupportedMCVersion.V_1_20_4
-    allocated_ram_mb: int = Field(default=4096, ge=2048, le=32768)
-    hardware_tier_preference: Optional[HardwareTier] = HardwareTier.HIGH_NVME
+    mc_version: str = Field(default="1.20.4")
+    allocated_ram_mb: int = Field(default=4096, ge=1024, le=65536)
+    hardware_tier_preference: Optional[str] = "high_nvme"
     preferred_node_id: Optional[str] = None
     target_user_id: Optional[str] = None
     enable_crossplay: bool = True
