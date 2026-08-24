@@ -1,8 +1,10 @@
 """
 main.py - Master Node FastAPI Application Entrypoint
 Features:
-1. Landing SaaS Portal (/) - High-converting SaaS showcase, Modpack Explorer & ZIP/.mrpack Importer
-2. User Dashboard Console (/dashboard, /console) - Sidebar layout, Overview, Server Workspace:
+1. SaaS Landing Page (/) - High-converting marketing portal, Modpacks showcase & ZIP/.mrpack Importer
+2. User Console Dashboard (/dashboard, /console) - Sidebar layout, Overview, Server Workspace:
+   * Persistent Server List (GET /api/v1/servers/my - No disappearing on refresh!)
+   * Direct Server Start/Stop/Restart/Delete actions
    * Core/Version Switcher with Mod Loader Dependency Warning
    * server.properties Full GUI Config Editor
    * Web File Explorer & 1-Click World ZIP Backup
@@ -22,6 +24,7 @@ from app.core.database import db
 from app.api.routes import api_router
 from app.services.billing_engine import billing_engine
 from app.services.node_scheduler import scheduler
+from app.services.server_store import server_store
 
 # ==============================================================================
 # 1. SaaS Landing Page HTML (/)
@@ -97,7 +100,7 @@ LANDING_PAGE_HTML = """<!DOCTYPE html>
         </div>
     </section>
 
-    <!-- Popular Modpacks Showcase (Mods removed, Modpacks Only) -->
+    <!-- Popular Modpacks Showcase -->
     <section id="modpacks" class="max-w-7xl mx-auto px-4 md:px-8 py-16 space-y-8">
         <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
@@ -109,7 +112,6 @@ LANDING_PAGE_HTML = """<!DOCTYPE html>
         </div>
 
         <div id="featuredModpacksGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-            <!-- Modpack Cards -->
             <div class="modpack-card glass-card rounded-2xl p-5 space-y-4 flex flex-col justify-between border border-slate-800 transition shadow-xl">
                 <div class="space-y-3">
                     <img src="https://cdn.modrinth.com/data/Z19nggA0/icon.png" class="w-14 h-14 rounded-2xl bg-slate-900 object-cover shadow-md">
@@ -188,14 +190,14 @@ LANDING_PAGE_HTML = """<!DOCTYPE html>
         </div>
     </section>
 
-    <!-- Modpack ZIP / .mrpack Drag & Drop Importer -->
+    <!-- Modpack Importer -->
     <section id="importer" class="max-w-7xl mx-auto px-4 md:px-8 py-16">
         <div class="glass-card rounded-3xl p-8 md:p-12 border border-indigo-500/30 bg-gradient-to-br from-indigo-950/40 via-slate-900 to-slate-950 space-y-6 text-center">
             <div class="w-16 h-16 rounded-2xl bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center text-3xl mx-auto">📁</div>
             <div class="space-y-2 max-w-2xl mx-auto">
                 <h3 class="text-2xl md:text-3xl font-black text-white">내 모드팩 파일 직접 임포트 (.zip, .mrpack)</h3>
                 <p class="text-xs md:text-sm text-slate-400 leading-relaxed">
-                    CurseForge에서 내보낸 ZIP 파일이나 Modrinth의 .mrpack 파일을 업로드하면, 모드 및 컨피그 설정을 자동으로 추출하여 즉시 구동 가능한 전용 서버를 생성합니다.
+                    CurseForge에서 내보낸 ZIP 파일이나 Modrinth의 .mrpack 파일을 업로드하면 즉시 전용 서버를 생성합니다.
                 </p>
             </div>
             
@@ -210,30 +212,10 @@ LANDING_PAGE_HTML = """<!DOCTYPE html>
         </div>
     </section>
 
-    <!-- Features -->
-    <section id="features" class="max-w-7xl mx-auto px-4 md:px-8 py-16 grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div class="glass-card rounded-2xl p-6 space-y-3">
-            <div class="text-3xl">🧠</div>
-            <h4 class="font-black text-base text-white">자유로운 RAM 정수 직접 지정</h4>
-            <p class="text-xs text-slate-400 leading-relaxed">1GB부터 128GB까지 정수 단위로 자유롭게 할당하고 실시간 예상 과금액을 확인하세요.</p>
-        </div>
-        <div class="glass-card rounded-2xl p-6 space-y-3">
-            <div class="text-3xl">⚙️</div>
-            <h4 class="font-black text-base text-white">server.properties GUI 에디터</h4>
-            <p class="text-xs text-slate-400 leading-relaxed">복잡한 설정 파일 직접 수정 없이, 브라우저에서 토글과 슬라이더로 모든 인게임 옵션을 제어합니다.</p>
-        </div>
-        <div class="glass-card rounded-2xl p-6 space-y-3">
-            <div class="text-3xl">🌍</div>
-            <h4 class="font-black text-base text-white">원클릭 월드 ZIP 백업</h4>
-            <p class="text-xs text-slate-400 leading-relaxed">지옥, 엔드, 오버월드 맵 데이터를 클릭 한 번으로 압축하여 즉시 PC로 다운로드할 수 있습니다.</p>
-        </div>
-    </section>
-
     <!-- Footer -->
     <footer class="border-t border-slate-800/80 bg-slate-950 py-8 text-center text-xs text-slate-500">
         <div class="max-w-7xl mx-auto px-4 space-y-2">
             <p>© 2026 NextGen MC Platform. All rights reserved. (청소년 보호법에 따른 19세 성인인증 필수)</p>
-            <p class="text-[11px] text-slate-600">Minecraft is a trademark of Mojang AB. NextGen MC is not affiliated with Mojang or Microsoft.</p>
         </div>
     </footer>
 
@@ -275,7 +257,6 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
     <!-- Left Sidebar -->
     <aside class="w-64 bg-slate-950 border-r border-slate-800/80 flex flex-col justify-between p-4 flex-shrink-0">
         <div class="space-y-6">
-            <!-- Brand -->
             <a href="/" class="flex items-center gap-3 px-2">
                 <div class="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center font-black text-sm text-white shadow-lg shadow-indigo-500/30">⛏️</div>
                 <div>
@@ -284,7 +265,6 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                 </div>
             </a>
 
-            <!-- Nav Links -->
             <nav class="space-y-1">
                 <button onclick="switchView('overview')" id="nav_overview" class="nav-link active w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold text-slate-300 hover:bg-slate-900 transition">
                     <span>📊</span> 대시보드 개요
@@ -298,7 +278,6 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
             </nav>
         </div>
 
-        <!-- User Wallet & Profile -->
         <div class="space-y-3 border-t border-slate-800/80 pt-4">
             <div class="p-3 bg-slate-900/90 rounded-xl border border-slate-800 space-y-1.5">
                 <div class="flex items-center justify-between">
@@ -320,10 +299,9 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
 
     <!-- Main Workspace Area -->
     <main class="flex-1 flex flex-col overflow-hidden bg-[#050811]">
-        <!-- Top Toolbar -->
         <header class="h-14 border-b border-slate-800/80 px-6 flex items-center justify-between bg-slate-950/40">
             <div class="flex items-center gap-2 text-slate-400">
-                <span id="pageBreadcrumb">대시보드 개요</span>
+                <span id="pageBreadcrumb" class="font-semibold text-white">대시보드 개요</span>
             </div>
             <div class="flex items-center gap-3">
                 <button onclick="openCreateModal()" class="gradient-btn px-4 py-2 rounded-xl text-white font-extrabold shadow-lg shadow-indigo-600/30 hover:scale-105 transition flex items-center gap-1.5">
@@ -334,7 +312,6 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
 
         <!-- View 1: Overview -->
         <div id="view_overview" class="flex-1 overflow-y-auto p-6 space-y-6">
-            <!-- Stat Cards -->
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div class="glass-card p-5 rounded-2xl space-y-1">
                     <span class="text-slate-400 text-[10px] font-bold uppercase">가동 중인 서버</span>
@@ -354,7 +331,6 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                 </div>
             </div>
 
-            <!-- Fast Action Banner -->
             <div class="glass-card rounded-2xl p-6 bg-gradient-to-r from-indigo-950/40 via-slate-900 to-slate-900 flex items-center justify-between gap-4">
                 <div class="space-y-1">
                     <h3 class="font-extrabold text-base text-white">클라우드 마인크래프트 서버를 즉시 시작하세요</h3>
@@ -370,7 +346,10 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
         <div id="view_servers" class="hidden flex-1 overflow-y-auto p-6 space-y-6">
             <div class="flex items-center justify-between">
                 <h3 class="font-bold text-base text-white">🎮 내 마인크래프트 서버 목록</h3>
-                <span class="text-slate-400" id="serverListCount">0개 가동 중</span>
+                <div class="flex items-center gap-2">
+                    <button onclick="loadMyServers()" class="text-xs text-indigo-400 hover:underline">새로고침</button>
+                    <span class="text-slate-400" id="serverListCount">0개 가동 중</span>
+                </div>
             </div>
             <div id="serversGrid" class="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div id="emptyServers" class="col-span-2 glass-card rounded-2xl p-12 text-center space-y-2">
@@ -393,7 +372,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
         </div>
     </main>
 
-    <!-- Create Server Modal (Free Auto Domain vs Premium Custom Domain) -->
+    <!-- Create Server Modal -->
     <div id="createModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
         <div class="glass-card max-w-2xl w-full rounded-2xl p-6 md:p-8 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -404,7 +383,6 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                 <button onclick="closeCreateModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
             </div>
 
-            <!-- Presets -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div onclick="selectPreset('BUILDER_FLAT')" id="preset_BUILDER_FLAT" class="preset-card glass-card p-3.5 rounded-xl space-y-1.5 cursor-pointer border border-transparent">
                     <div class="text-xl">🏰</div>
@@ -432,7 +410,6 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                     <input type="text" id="srv_name" required placeholder="예: 우리들의 마인크래프트 서버" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 outline-none focus:border-indigo-500">
                 </div>
 
-                <!-- Domain Selection: Free Auto vs Premium Custom -->
                 <div class="p-3.5 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2.5">
                     <div class="flex items-center justify-between">
                         <label class="font-bold text-slate-200">접속 도메인 설정</label>
@@ -458,16 +435,15 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                     </div>
                 </div>
 
-                <!-- Advanced Options Container -->
                 <div id="advancedOptions" class="hidden p-4 bg-slate-900/90 rounded-xl border border-indigo-500/30 space-y-4">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
                             <label class="block font-semibold text-slate-300 mb-1">서버 구동기 (코어)</label>
                             <select id="srv_type" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 outline-none">
                                 <option value="PAPER">Paper (플러그인 최적화)</option>
-                                <option value="PURPUR">Purpur (고성능)</option>
+                                <option value="PURPUR">Purpur</option>
                                 <option value="FOLIA">Folia (멀티스레드)</option>
-                                <option value="FABRIC">Fabric (경량 모드팩)</option>
+                                <option value="FABRIC">Fabric (경량 모드)</option>
                                 <option value="FORGE">Forge (일반 모드팩)</option>
                                 <option value="NEOFORGE">NeoForge (최신 대형)</option>
                                 <option value="SPONGE">Sponge</option>
@@ -487,7 +463,6 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                         </div>
                     </div>
 
-                    <!-- Custom Integer RAM Allocation with Range & Number Input -->
                     <div class="p-3.5 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2.5">
                         <div class="flex items-center justify-between">
                             <label class="font-bold text-slate-200 flex items-center gap-1.5">
@@ -512,7 +487,6 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                     </div>
                 </div>
 
-                <!-- Real-time Cost Estimation Box -->
                 <div class="p-4 bg-gradient-to-r from-indigo-950/50 via-slate-900 to-slate-900 rounded-xl border border-indigo-500/30 space-y-1.5">
                     <div class="flex items-center justify-between">
                         <span class="font-bold text-indigo-300">💰 실시간 예상 과금액 (점유 RAM 기준)</span>
@@ -535,18 +509,17 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
     </div>
 
     <!-- ======================================================================= -->
-    <!-- Server Detailed Workspace Modal (Core Switcher, GUI Properties, Mods)   -->
+    <!-- Server Detailed Workspace Modal                                         -->
     <!-- ======================================================================= -->
     <div id="serverWorkspaceModal" class="hidden fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
         <div class="glass-card max-w-5xl w-full rounded-2xl p-6 space-y-4 shadow-2xl max-h-[92vh] flex flex-col">
-            <!-- Modal Header -->
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div class="flex items-center gap-3">
                     <span class="text-2xl">🎮</span>
                     <div>
                         <h4 class="font-extrabold text-base text-white" id="wsServerName">서버 관리 워크스페이스</h4>
                         <div class="flex items-center gap-2 text-[11px] text-slate-400 font-mono">
-                            <span id="wsServerAddress" class="text-indigo-300">alpha.domain.com</span>
+                            <span id="wsServerAddress" class="text-indigo-300 font-bold">alpha.domain.com</span>
                             <span id="wsServerSpecs" class="px-1.5 py-0.5 bg-slate-800 rounded">PAPER 26.2 (4GB RAM)</span>
                         </div>
                     </div>
@@ -554,19 +527,29 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                 <button onclick="closeServerWorkspace()" class="text-slate-400 hover:text-white font-sans text-xl">&times;</button>
             </div>
 
-            <!-- Workspace Tabs -->
             <div class="flex flex-wrap gap-1.5 border-b border-slate-800 pb-2.5 font-semibold">
                 <button onclick="switchWsTab('console')" id="wstab_console" class="tab-btn active px-3 py-1.5 rounded-lg">💻 콘솔 & 상태</button>
                 <button onclick="switchWsTab('version')" id="wstab_version" class="tab-btn px-3 py-1.5 rounded-lg">⚙️ 버전 & 구동기 변경</button>
                 <button onclick="switchWsTab('properties')" id="wstab_properties" class="tab-btn px-3 py-1.5 rounded-lg">📝 server.properties 설정</button>
                 <button onclick="switchWsTab('files')" id="wstab_files" class="tab-btn px-3 py-1.5 rounded-lg">📁 파일 탐색기</button>
-                <button onclick="switchWsTab('installed_mods')" id="wstab_installed_mods" class="tab-btn px-3 py-1.5 rounded-lg">🧩 설치된 모드 관리 & 업데이트</button>
+                <button onclick="switchWsTab('installed_mods')" id="wstab_installed_mods" class="tab-btn px-3 py-1.5 rounded-lg">🧩 설치된 모드 & 업데이트</button>
                 <button onclick="switchWsTab('marketplace')" id="wstab_marketplace" class="tab-btn px-3 py-1.5 rounded-lg">🛒 모드 마켓플레이스</button>
             </div>
 
             <!-- Tab 1: Console -->
             <div id="wspane_console" class="flex-1 overflow-y-auto space-y-3 font-mono">
-                <div id="rconBox" class="h-64 p-3 bg-black/90 rounded-xl border border-slate-800 text-emerald-400 overflow-y-auto space-y-1">
+                <div class="flex items-center justify-between p-3 bg-slate-900 rounded-xl border border-slate-800">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+                        <span class="font-bold text-white text-xs">서버 상태: <strong class="text-emerald-400" id="wsServerStatus">RUNNING</strong></span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="executeServerControlAction('restart')" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded">재시작</button>
+                        <button onclick="executeServerControlAction('stop')" class="px-3 py-1 bg-amber-900/40 text-amber-300 hover:bg-amber-900 rounded">정지</button>
+                        <button onclick="deleteCurrentServer()" class="px-3 py-1 bg-rose-900/40 text-rose-300 hover:bg-rose-900 rounded font-bold">서버 삭제</button>
+                    </div>
+                </div>
+                <div id="rconBox" class="h-60 p-3 bg-black/90 rounded-xl border border-slate-800 text-emerald-400 overflow-y-auto space-y-1">
                     <div>[RCON Connected] 명령어를 입력하세요.</div>
                 </div>
                 <form id="wsRconForm" class="flex gap-2 font-sans">
@@ -575,17 +558,13 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                 </form>
             </div>
 
-            <!-- Tab 2: Version & Core Switcher (with Dependency Warning) -->
+            <!-- Tab 2: Version & Core Switcher -->
             <div id="wspane_version" class="hidden flex-1 overflow-y-auto space-y-4">
                 <div class="p-4 bg-slate-900/80 rounded-xl border border-slate-800 space-y-3">
                     <h5 class="font-bold text-white text-sm">🔄 마인크래프트 버전 및 구동기(코어) 변경</h5>
-                    <p class="text-slate-400 leading-relaxed">
-                        구동기를 변경하면 서버 재시작 시 새로운 코어 바이너리로 즉시 교체됩니다.
-                    </p>
-
                     <div id="modLoaderWarningBox" class="p-3 bg-amber-950/40 border border-amber-500/30 rounded-xl text-amber-300 space-y-1">
                         <strong class="block">⚠️ 모드로더 의존성 주의 안내</strong>
-                        <span>현재 서버에 설치된 모드팩이나 포지/패브릭 모드가 있는 경우, Paper나 Vanilla로 변경 시 모드가 실행되지 않습니다.</span>
+                        <span>현재 서버에 설치된 모드가 있는 경우, Paper나 Vanilla로 변경 시 모드가 로드되지 않습니다.</span>
                     </div>
 
                     <div class="grid grid-cols-2 gap-4">
@@ -619,7 +598,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                 </div>
             </div>
 
-            <!-- Tab 3: server.properties GUI Config Editor -->
+            <!-- Tab 3: server.properties GUI Editor -->
             <div id="wspane_properties" class="hidden flex-1 overflow-y-auto space-y-4">
                 <div class="flex items-center justify-between">
                     <span class="font-bold text-white">📝 server.properties GUI 설정 에디터</span>
@@ -653,7 +632,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                     </div>
 
                     <div>
-                        <label class="block text-slate-400 mb-1">최대 플레이어 수 (Max Players)</label>
+                        <label class="block text-slate-400 mb-1">최대 플레이어 수</label>
                         <input type="number" id="prop_max_players" value="20" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100">
                     </div>
                     <div>
@@ -665,7 +644,6 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                         <input type="number" id="prop_sim_distance" value="8" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100">
                     </div>
 
-                    <!-- Toggles -->
                     <div class="space-y-2 pt-2">
                         <label class="flex items-center gap-2 text-slate-300">
                             <input type="checkbox" id="prop_pvp" class="rounded bg-slate-950 text-indigo-600"> PVP 허용
@@ -693,7 +671,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                 </div>
             </div>
 
-            <!-- Tab 4: File Explorer -->
+            <!-- Tab 4: Files -->
             <div id="wspane_files" class="hidden flex-1 overflow-y-auto space-y-3">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-1 text-slate-400 font-mono" id="wsBreadcrumbs"><span>/</span></div>
@@ -713,7 +691,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                 </table>
             </div>
 
-            <!-- Tab 5: Installed Mods & Auto-Updater -->
+            <!-- Tab 5: Installed Mods -->
             <div id="wspane_installed_mods" class="hidden flex-1 overflow-y-auto space-y-4">
                 <div class="flex items-center justify-between">
                     <div>
@@ -727,9 +705,8 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                 <div id="installedModsList" class="space-y-2"></div>
             </div>
 
-            <!-- Tab 6: Mod & Modpack Marketplace (Modrinth & CurseForge Split Tabs, Tags, Infinite Scroll) -->
+            <!-- Tab 6: Marketplace -->
             <div id="wspane_marketplace" class="hidden flex-1 overflow-y-auto space-y-4 flex flex-col">
-                <!-- Source Tabs (Modrinth vs CurseForge) -->
                 <div class="flex items-center justify-between border-b border-slate-800 pb-2">
                     <div class="flex gap-2">
                         <button onclick="selectMarketplaceSource('modrinth')" id="src_modrinth" class="tab-btn active px-4 py-1.5 rounded-lg font-bold">🟢 Modrinth</button>
@@ -750,19 +727,15 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                     </div>
                 </div>
 
-                <!-- Tags / Category Chips -->
                 <div id="categoryChipsContainer" class="flex flex-wrap gap-1.5 pb-2 border-b border-slate-800/60"></div>
 
-                <!-- Search Input -->
                 <div class="flex gap-2">
                     <input type="text" id="marketSearchInput" placeholder="모드 또는 모드팩 검색 (Enter)" onkeydown="if(event.key==='Enter') resetAndSearchMarket()" class="flex-1 px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-100">
                     <button onclick="resetAndSearchMarket()" class="px-4 py-2 bg-indigo-600 text-white font-bold rounded-xl shadow">검색</button>
                 </div>
 
-                <!-- Marketplace Grid -->
                 <div id="marketGrid" class="grid grid-cols-1 md:grid-cols-2 gap-3 flex-1 overflow-y-auto"></div>
 
-                <!-- Load More Button (Infinite Scroll alternative) -->
                 <div class="text-center pt-2">
                     <button onclick="loadMoreMarketItems()" id="loadMoreBtn" class="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl">
                         ⬇️ 다음 페이지 더 불러오기
@@ -772,7 +745,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- Mod Detail Viewer Modal -->
+    <!-- Mod Detail Modal -->
     <div id="modDetailModal" class="hidden fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 z-50">
         <div class="glass-card max-w-3xl w-full rounded-2xl p-6 space-y-4 shadow-2xl max-h-[88vh] flex flex-col text-xs">
             <div class="flex items-start justify-between border-b border-slate-800 pb-3">
@@ -820,6 +793,80 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
 
             const names = { overview: "대시보드 개요", servers: "내 마인크래프트 서버", helpdesk: "기술 지원 헬프데스크" };
             document.getElementById('pageBreadcrumb').innerText = names[viewName];
+        }
+
+        async function loadMyServers() {
+            try {
+                const resp = await fetch(`/api/v1/servers/my?user_email=${encodeURIComponent(currentUser.email)}`);
+                if (resp.ok) {
+                    const data = await resp.json();
+                    myServers = data.map(s => ({
+                        id: s.id,
+                        name: s.name,
+                        address: s.full_domain || `${s.domain_slug}.domain.com`,
+                        type: s.server_type,
+                        version: s.mc_version,
+                        ram: s.allocated_ram_mb,
+                        status: s.status || 'RUNNING'
+                    }));
+                    renderServers();
+                }
+            } catch (err) {
+                console.error("Failed to load servers:", err);
+            }
+        }
+
+        function renderServers() {
+            const grid = document.getElementById('serversGrid');
+            const empty = document.getElementById('emptyServers');
+            document.getElementById('statServerCount').innerText = `${myServers.length}개`;
+            document.getElementById('serverListCount').innerText = `${myServers.length}개 가동 중`;
+
+            if (myServers.length === 0) { empty.classList.remove('hidden'); return; }
+            empty.classList.add('hidden');
+            grid.innerHTML = '';
+
+            let totalRam = 0;
+            let totalCostHour = 0;
+
+            myServers.forEach(srv => {
+                totalRam += srv.ram;
+                const ramGb = srv.ram / 1024;
+                const costMin = (0.20 + (ramGb * 0.08)) * 1.3;
+                totalCostHour += (costMin * 60);
+
+                const card = document.createElement('div');
+                card.className = 'glass-card rounded-2xl p-5 space-y-4 border border-indigo-500/20';
+                card.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <span class="font-extrabold text-base text-white">${srv.name}</span>
+                            <div class="flex items-center gap-1.5 mt-1">
+                                <span class="px-2 py-0.5 bg-slate-800 text-slate-300 rounded font-mono text-[10px]">${srv.type} ${srv.version} (${ramGb}GB RAM)</span>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-1 text-xs font-mono font-bold ${srv.status === 'RUNNING' ? 'text-emerald-400 bg-emerald-950/80 border-emerald-500/30' : 'text-rose-400 bg-rose-950/80 border-rose-500/30'} rounded-full border flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full ${srv.status === 'RUNNING' ? 'bg-emerald-400 animate-ping' : 'bg-rose-400'}"></span> ${srv.status}
+                        </span>
+                    </div>
+                    <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
+                        <span class="text-[9px] text-slate-500 uppercase font-bold">인게임 접속 주소 (포트 불필요)</span>
+                        <div class="flex items-center justify-between">
+                            <span class="font-mono text-indigo-300 font-bold">${srv.address}</span>
+                            <button onclick="navigator.clipboard.writeText('${srv.address}'); alert('복사되었습니다!');" class="text-slate-400 hover:text-white underline">복사</button>
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                        <button onclick="openServerWorkspace('${srv.id}')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 font-bold text-white rounded-xl shadow">
+                            ⚙️ 서버 관리 워크스페이스 열기
+                        </button>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+
+            document.getElementById('statTotalRam').innerText = `${(totalRam / 1024).toFixed(0)} GB`;
+            document.getElementById('statCostPerHour').innerText = `~${totalCostHour.toFixed(0)} KRW`;
         }
 
         function openCreateModal() {
@@ -981,17 +1028,8 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                         updateAuthState();
                     }
                     alert(`🎉 [${payload.server_type}] 서버 [${payload.name}] 배포 완료!\\n접속 주소: ${res.connect_address}`);
-                    myServers.push({
-                        id: res.server_id,
-                        name: payload.name,
-                        address: res.connect_address,
-                        type: payload.server_type,
-                        version: payload.mc_version,
-                        ram: payload.allocated_ram_mb,
-                        status: 'RUNNING'
-                    });
-                    renderServers();
                     closeCreateModal();
+                    await loadMyServers();
                     switchView('servers');
                 } else {
                     alert('배포 실패: ' + (res.detail || JSON.stringify(res)));
@@ -1004,60 +1042,15 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
             }
         });
 
-        function renderServers() {
-            const grid = document.getElementById('serversGrid');
-            const empty = document.getElementById('emptyServers');
-            document.getElementById('statServerCount').innerText = `${myServers.length}개`;
-            document.getElementById('serverListCount').innerText = `${myServers.length}개 가동 중`;
-
-            if (myServers.length === 0) { empty.classList.remove('hidden'); return; }
-            empty.classList.add('hidden');
-            grid.innerHTML = '';
-
-            let totalRam = 0;
-            myServers.forEach(srv => {
-                totalRam += srv.ram;
-                const card = document.createElement('div');
-                card.className = 'glass-card rounded-2xl p-5 space-y-4 border border-indigo-500/20';
-                card.innerHTML = `
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <span class="font-extrabold text-base text-white">${srv.name}</span>
-                            <div class="flex items-center gap-1.5 mt-1">
-                                <span class="px-2 py-0.5 bg-slate-800 text-slate-300 rounded font-mono text-[10px]">${srv.type} ${srv.version} (${srv.ram / 1024}GB RAM)</span>
-                            </div>
-                        </div>
-                        <span class="px-2.5 py-1 text-xs font-mono font-bold text-emerald-400 bg-emerald-950/80 rounded-full border border-emerald-500/30 flex items-center gap-1.5">
-                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> ${srv.status}
-                        </span>
-                    </div>
-                    <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
-                        <span class="text-[9px] text-slate-500 uppercase font-bold">인게임 접속 주소 (포트 불필요)</span>
-                        <div class="flex items-center justify-between">
-                            <span class="font-mono text-indigo-300 font-bold">${srv.address}</span>
-                            <button onclick="navigator.clipboard.writeText('${srv.address}'); alert('복사되었습니다!');" class="text-slate-400 hover:text-white underline">복사</button>
-                        </div>
-                    </div>
-                    <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
-                        <button onclick="openServerWorkspace('${srv.id}')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 font-bold text-white rounded-xl shadow">
-                            ⚙️ 서버 관리 워크스페이스 열기
-                        </button>
-                    </div>
-                `;
-                grid.appendChild(card);
-            });
-
-            document.getElementById('statTotalRam').innerText = `${totalRam / 1024} GB`;
-        }
-
         // =======================================================================
-        // Server Workspace Functions
+        // Server Detailed Workspace
         // =======================================================================
         function openServerWorkspace(serverId) {
-            activeWsServer = myServers.find(s => s.id === serverId) || { id: serverId, name: "마인크래프트 서버", address: "alpha.domain.com", type: "PAPER", version: "26.2", ram: 4096 };
+            activeWsServer = myServers.find(s => s.id === serverId) || { id: serverId, name: "마인크래프트 서버", address: "alpha.domain.com", type: "PAPER", version: "26.2", ram: 4096, status: 'RUNNING' };
             document.getElementById('wsServerName').innerText = activeWsServer.name;
             document.getElementById('wsServerAddress').innerText = activeWsServer.address;
             document.getElementById('wsServerSpecs').innerText = `${activeWsServer.type} ${activeWsServer.version} (${activeWsServer.ram / 1024}GB RAM)`;
+            document.getElementById('wsServerStatus').innerText = activeWsServer.status;
             document.getElementById('serverWorkspaceModal').classList.remove('hidden');
             switchWsTab('console');
         }
@@ -1080,6 +1073,38 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
             if (tabName === 'marketplace') { loadMarketCategories(); resetAndSearchMarket(); }
         }
 
+        async function executeServerControlAction(action) {
+            try {
+                const resp = await fetch(`/api/v1/servers/${activeWsServer.id}/action`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: action })
+                });
+                const res = await resp.json();
+                if (resp.ok) {
+                    alert(`✓ ${res.message}`);
+                    activeWsServer.status = res.new_status;
+                    document.getElementById('wsServerStatus').innerText = res.new_status;
+                    loadMyServers();
+                } else {
+                    alert('명령 실패: ' + (res.detail || JSON.stringify(res)));
+                }
+            } catch (e) { alert('오류: ' + e.message); }
+        }
+
+        async function deleteCurrentServer() {
+            if (confirm(`정말로 서버 [${activeWsServer.name}]를 완전히 삭제하시겠습니까?`)) {
+                try {
+                    const resp = await fetch(`/api/v1/servers/${activeWsServer.id}`, { method: 'DELETE' });
+                    if (resp.ok) {
+                        alert('✓ 서버가 완전히 삭제되었습니다.');
+                        closeServerWorkspace();
+                        loadMyServers();
+                    }
+                } catch (e) { alert('삭제 오류: ' + e.message); }
+            }
+        }
+
         async function executeVersionSwitch() {
             const newCore = document.getElementById('switch_core').value;
             const newVer = document.getElementById('switch_version').value;
@@ -1097,6 +1122,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                     activeWsServer.type = newCore;
                     activeWsServer.version = newVer;
                     document.getElementById('wsServerSpecs').innerText = `${newCore} ${newVer} (${activeWsServer.ram / 1024}GB RAM)`;
+                    loadMyServers();
                 } else {
                     alert('변경 실패: ' + (res.detail || JSON.stringify(res)));
                 }
@@ -1189,9 +1215,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
             } catch (err) { alert('오류: ' + err.message); }
         }
 
-        // =======================================================================
-        // Marketplace (Modrinth & CurseForge Tabs, Tags & Infinite Scroll)
-        // =======================================================================
+        // Marketplace
         function selectMarketplaceSource(src) {
             marketSource = src;
             ['modrinth', 'curseforge'].forEach(s => {
@@ -1350,10 +1374,10 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
             window.location.href = '/';
         }
 
+        // 초기화 실행
         updateAuthState();
-        renderServers();
+        loadMyServers();
 
-        // URL 파라미터 감지 (예: /dashboard?preset=MODPACK_READY&modpack=all-the-mods-9)
         window.addEventListener('DOMContentLoaded', () => {
             const urlParams = new URLSearchParams(window.location.search);
             const modpack = urlParams.get('modpack');
@@ -1387,7 +1411,6 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
 </head>
 <body class="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
 
-    <!-- Admin Authentication Modal -->
     <div id="adminAuthGateModal" class="fixed inset-0 bg-black/90 backdrop-blur-xl flex items-center justify-center p-4 z-50">
         <div class="card max-w-md w-full rounded-2xl p-8 space-y-5 shadow-2xl border border-indigo-500/40">
             <div class="text-center space-y-2">
@@ -1409,7 +1432,6 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- Protected Admin Dashboard Header -->
     <header class="flex flex-col md:flex-row items-start md:items-center justify-between pb-4 border-b border-slate-800 gap-4">
         <div>
             <h1 class="text-2xl font-black text-white flex items-center gap-3">
@@ -1424,7 +1446,6 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
         </div>
     </header>
 
-    <!-- 5-Tab Navigation -->
     <div class="flex flex-wrap gap-2 border-b border-slate-800 pb-3">
         <button onclick="switchTab('billing')" id="tab_billing" class="tab-btn active px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-indigo-600 transition flex items-center gap-2">
             💰 1. RAM 요율 & 커스텀 티어 & 스왑
@@ -1751,6 +1772,7 @@ async def health_check():
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
         "features": [
+            "persistent_server_store",
             "saas_landing_page",
             "sidebar_user_dashboard",
             "free_auto_domain_vs_premium_custom",
