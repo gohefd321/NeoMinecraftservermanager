@@ -25,14 +25,34 @@
 
 단일 스크립트로 설치, 업데이트, 완전 삭제 후 재설치, 서비스 복구를 모두 처리할 수 있습니다.
 
-### 1. 첫 설치 및 대화형 메뉴 실행
+### 1. 원격 원클릭 설치 (One-Line Installer)
+GitHub 원격 저장소에서 최신 `install.sh`를 즉시 내려받아 실행합니다:
+
 ```bash
-sudo bash /home/bettercallsixseven/nextgen-mc-platform/install.sh
-# 또는 원격 단일 명령 실행:
-# curl -sSL https://domain/install.sh | sudo bash
+# 원격 단일 명령 실행 (One-Line Fast Install)
+curl -sSL https://github.com/gohefd321/NeoMinecraftservermanager/raw/refs/heads/main/install.sh | sudo bash
 ```
 
-### 2. 옵션별 원클릭 실행 (CLI Flags)
+또는 스크립트 파일을 직접 다운로드한 후 실행:
+
+```bash
+# 스크립트 다운로드 후 실행
+curl -fsSL https://github.com/gohefd321/NeoMinecraftservermanager/raw/refs/heads/main/install.sh -o install.sh
+sudo bash install.sh
+```
+
+---
+
+### 2. 로컬 설치 및 대화형 메뉴 실행
+로컬 클론 디렉토리에서 직접 실행하는 경우:
+
+```bash
+sudo bash /home/bettercallsixseven/nextgen-mc-platform/install.sh
+```
+
+---
+
+### 3. 옵션별 원클릭 실행 (CLI Flags)
 - **업데이트 및 재시작 (Update & Restart)**:
   기존 설정과 월드 데이터를 100% 보존하면서 최신 코드와 디펜던시를 갱신하고 서비스를 재기동합니다.
   ```bash
