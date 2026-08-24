@@ -148,11 +148,12 @@ case "$PKG_MGR" in
         ;;
     dnf|yum)
         $PKG_MGR check-update -y || true
+        # EPEL 저장소 활성화 (RHEL/CentOS/Rocky/Alma용)
         if [[ "$OS_ID" =~ ^(rhel|centos|rocky|almalinux)$ ]]; then
             $PKG_MGR install -y -q epel-release || true
         fi
         $PKG_MGR install -y -q \
-            ca-certificates curl gnupg2 jq git python3 python3-pip python3-venv \
+            ca-certificates curl gnupg2 jq git python3 python3-pip \
             golang iptables net-tools
         ;;
     pacman)
