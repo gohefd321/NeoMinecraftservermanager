@@ -6,12 +6,12 @@ Supports:
   * Modded: FABRIC, FORGE (Official), NEOFORGE, SPONGE (SpongeVanilla)
   * Classic & Official: VANILLA (Mojang Official), SPIGOT, CRAFTBUKKIT
   * Proxies: VELOCITY (L4 Ingress), BUNGEECORD, WATERFALL
-- Mojang Full Version Manifest (Releases + Snapshots)
-- Dynamic Custom Tiers (Node Grouping)
-- Global Memory & Swap Ratio (ZRAM/NVMe) Configuration
+- File Management (Explorer, Config Editor, Upload, World Download)
+- Modrinth / CurseForge Mod & Modpack Browser (Prism Launcher Style)
+- Domain Customization & Credit Deduction
 """
 from enum import Enum
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 from pydantic import BaseModel, Field, EmailStr
 
@@ -155,18 +155,30 @@ class NodeHealthReport(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 # ---------------------------------------------------------------------------
+# Domain Check & Pricing
+# ---------------------------------------------------------------------------
+class DomainCheckResponse(BaseModel):
+    slug: str
+    is_available: bool
+    is_premium: bool = False
+    custom_fee_krw: int = 1000
+    suggested_slugs: List[str] = Field(default_factory=list)
+    message: str
+
+# ---------------------------------------------------------------------------
 # Minecraft Server Models (Full Versions & Proxies)
 # ---------------------------------------------------------------------------
 class ServerDeployRequest(BaseModel):
-    name: str = Field(..., min_length=2, max_length=32)
+    name: str = Field(..., min_length=2, max_length=64)
     domain_slug: str = Field(..., pattern=r"^[a-z0-9-]{3,32}$")
     preset_type: ServerPreset = ServerPreset.SURVIVAL_SMP
-    server_type: ServerType = ServerType.PAPER
-    mc_version: str = Field(default="1.20.4")
+    server_type: Union[ServerType, str] = ServerType.PAPER
+    mc_version: str = Field(default="26.2")
     allocated_ram_mb: int = Field(default=4096, ge=1024, le=65536)
     hardware_tier_preference: Optional[str] = "high_nvme"
     preferred_node_id: Optional[str] = None
     target_user_id: Optional[str] = None
+    is_custom_domain: bool = False
     enable_crossplay: bool = True
     enable_zgc: bool = True
     modpack_url: Optional[str] = None
@@ -180,7 +192,7 @@ class ServerResponse(BaseModel):
     node_ip: str
     port: int
     rcon_port: int
-    server_type: ServerType
+    server_type: str
     mc_version: str
     allocated_ram_mb: int
     status: ServerStatus
@@ -193,6 +205,68 @@ class ServerControlRequest(BaseModel):
 
 class RconExecuteRequest(BaseModel):
     command: str = Field(..., max_length=256)
+
+# ---------------------------------------------------------------------------
+# File Explorer & Config Editor Models
+# ---------------------------------------------------------------------------
+class FileItem(BaseModel):
+    name: str
+    path: str
+    is_dir: bool
+    size_bytes: int
+    modified_at: str
+    is_editable: bool = False
+
+class FileContentRead(BaseModel):
+    path: str
+    content: str
+    size_bytes: int
+    is_readonly: bool = False
+
+class FileContentSave(BaseModel):
+    path: str
+    content: str
+
+# ---------------------------------------------------------------------------
+# Modrinth & CurseForge Mod Marketplace Models (Prism Launcher Style)
+# ---------------------------------------------------------------------------
+class ModSearchItem(BaseModel):
+    id: str
+    slug: str
+    title: str
+    description: str
+    author: str
+    icon_url: Optional[str] = None
+    downloads: int = 0
+    follows: int = 0
+    project_type: str = "mod" # mod or modpack
+    loaders: List[str] = Field(default_factory=list)
+    game_versions: List[str] = Field(default_factory=list)
+    categories: List[str] = Field(default_factory=list)
+    source: str = "modrinth"
+
+class ModDetailResponse(BaseModel):
+    id: str
+    slug: str
+    title: str
+    description: str
+    body_markdown: str
+    author: str
+    icon_url: Optional[str] = None
+    banner_url: Optional[str] = None
+    downloads: int
+    loaders: List[str]
+    game_versions: List[str]
+    project_type: str
+    download_url: Optional[str] = None
+    filename: Optional[str] = None
+
+class ModInstallRequest(BaseModel):
+    mod_id: str
+    version_id: Optional[str] = None
+    project_type: str = "mod" # mod or modpack
+    download_url: Optional[str] = None
+    filename: Optional[str] = None
 
 # ---------------------------------------------------------------------------
 # Telemetry & Billing Models
