@@ -1,6 +1,6 @@
 """
 node_scheduler.py - Advanced Node Resource Monitoring & Tier-Aware Scheduler
-Supports: Master-as-Worker (Local Container Deployment), Dynamic Multipliers, Hard Threshold Guard
+Supports: Master-as-Worker, Dynamic Multipliers, Hard Threshold Guard, Robust ZRAM Detection
 """
 import time
 import os
@@ -17,10 +17,41 @@ DEFAULT_TIER_MULTIPLIERS: Dict[str, float] = {
     HardwareTier.EXTREME_DEDICATED.value: 1.8,
 }
 
-# 스케줄링 차단 임계치 (Hard Limits)
-MAX_RAM_USAGE_RATIO = 0.90   # 물리 RAM 90% 초과 시 차단
-MAX_ZRAM_USAGE_RATIO = 0.80  # ZRAM 80% 초과 시 차단
-MAX_CPU_USAGE_PCT = 95.0     # CPU 95% 초과 시 차단
+MAX_RAM_USAGE_RATIO = 0.90
+MAX_ZRAM_USAGE_RATIO = 0.80
+MAX_CPU_USAGE_PCT = 95.0
+
+
+def get_safe_zram_total_mb() -> int:
+    """ZRAM 총 용량 감지 (zramctl --json 에러 방어 및 /sys, /proc/swaps 파싱)"""
+    total_mb = 0
+    # 1. /sys/block/zram* 디스크 사이즈 확인
+    try:
+        sys_zram = "/sys/block"
+        if os.path.exists(sys_zram):
+            for dev in os.listdir(sys_zram):
+                if dev.startswith("zram"):
+                    size_file = os.path.join(sys_zram, dev, "disksize")
+                    if os.path.exists(size_file):
+                        with open(size_file, "r") as f:
+                            bytes_val = int(f.read().strip())
+                            total_mb += int(bytes_val / (1024 * 1024))
+        if total_mb > 0:
+            return total_mb
+    except Exception:
+        pass
+
+    # 2. zramctl 기본 파싱 fallback (플래그 없이 실행)
+    try:
+        out = subprocess.check_output(["zramctl", "-b", "--noheadings", "-o", "DISKSIZE"], text=True, stderr=subprocess.DEVNULL)
+        for line in out.strip().splitlines():
+            line = line.strip()
+            if line.isdigit():
+                total_mb += int(int(line) / (1024 * 1024))
+    except Exception:
+        pass
+
+    return total_mb
 
 
 class NodeInfo:
@@ -31,7 +62,6 @@ class NodeInfo:
         self.hardware_tier = meta.hardware_tier.value if hasattr(meta.hardware_tier, "value") else str(meta.hardware_tier)
         self.is_master_node = meta.is_master_node
         
-        # 어드민 커스텀 배율이 지정되었으면 우선 적용, 아니면 티어 기본 배율 적용
         if meta.custom_multiplier is not None:
             self.billing_multiplier = float(meta.custom_multiplier)
         else:
@@ -55,7 +85,6 @@ class NodeScheduler:
         return node
 
     def set_node_multiplier(self, node_id: str, multiplier: float) -> bool:
-        """어드민 페이지에서 특정 노드의 과금 배율을 즉시 직접 변경"""
         if node_id in self.nodes:
             self.nodes[node_id].billing_multiplier = round(multiplier, 2)
             print(f"[Scheduler] Node [{node_id}] billing multiplier updated to: {multiplier}x")
@@ -75,28 +104,11 @@ class NodeScheduler:
         return 1.0
 
     def register_master_as_local_worker(self):
-        """
-        Master 노드 자체를 로컬 워커로 스케줄러에 자동 등록 (Master-as-Worker / Single-Node Mode)
-        """
         try:
             mem = psutil.virtual_memory()
             cpu_cores = psutil.cpu_count(logical=True) or 4
             total_ram_mb = int(mem.total / (1024 * 1024))
-            
-            # ZRAM 크기 탐색
-            total_zram_mb = 0
-            try:
-                out = subprocess.check_output(["zramctl", "--json"], text=True)
-                import json
-                data = json.loads(out)
-                for dev in data.get("zramdevices", []):
-                    d_str = dev.get("disksize", "0")
-                    if d_str.endswith("G"):
-                        total_zram_mb += int(float(d_str[:-1]) * 1024)
-                    elif d_str.endswith("M"):
-                        total_zram_mb += int(float(d_str[:-1]))
-            except Exception:
-                pass
+            total_zram_mb = get_safe_zram_total_mb()
 
             master_req = NodeRegisterRequest(
                 node_id="master-local",
@@ -116,16 +128,14 @@ class NodeScheduler:
             print(f"[Scheduler Warn] Could not initialize Master as local worker: {e}")
 
     def update_master_local_health(self):
-        """Master 노드의 실시간 메트릭 갱신"""
         try:
             mem = psutil.virtual_memory()
             swap = psutil.swap_memory()
             cpu_pct = psutil.cpu_percent(interval=None)
             
-            # Docker 컨테이너 수
             running_cnt = 0
             try:
-                out = subprocess.check_output(["docker", "ps", "-q"], text=True)
+                out = subprocess.check_output(["docker", "ps", "-q"], text=True, stderr=subprocess.DEVNULL)
                 running_cnt = len(out.strip().splitlines()) if out.strip() else 0
             except Exception:
                 pass
@@ -146,12 +156,6 @@ class NodeScheduler:
             pass
 
     def select_best_node(self, required_ram_mb: int, preferred_tier: Optional[HardwareTier] = None, preferred_node_id: Optional[str] = None) -> NodeInfo:
-        """
-        자원 가용성 검증 및 최적 노드 스케줄링 (Least-Loaded Score)
-        - preferred_node_id (예: master-local) 요청 시 해당 노드 우선 할당
-        - RAM 90%, ZRAM 80% 초과 노드 배제
-        """
-        # 1. 특정 노드 지정 요청 처리
         if preferred_node_id and preferred_node_id in self.nodes:
             target = self.nodes[preferred_node_id]
             if target.latest_health:
@@ -163,11 +167,9 @@ class NodeScheduler:
         available_candidates: List[NodeInfo] = []
 
         for node_id, node in self.nodes.items():
-            # Master 로컬 노드는 자체 생존 처리
             if node.is_master_node:
                 self.update_master_local_health()
 
-            # 하트비트 생존 여부 (30초)
             if not node.is_master_node and (now - node.last_heartbeat > 30):
                 continue
 
@@ -175,7 +177,6 @@ class NodeScheduler:
             if not health:
                 continue
 
-            # Hard limits 검증
             ram_ratio = health.ram_used_mb / max(health.ram_total_mb, 1)
             zram_ratio = health.zram_used_mb / max(health.zram_total_mb, 1) if health.zram_total_mb > 0 else 0.0
 
@@ -198,7 +199,6 @@ class NodeScheduler:
             available_candidates.append(node)
 
         if not available_candidates:
-            # Fallback: 만약 Master-local 노드가 존재한다면 강제 할당 시도
             if "master-local" in self.nodes:
                 return self.nodes["master-local"]
 
@@ -207,14 +207,12 @@ class NodeScheduler:
                 detail="클러스터 내 가용 자원이 충분한 노드가 없습니다. 잠시 후 다시 시도하십시오."
             )
 
-        # 티어 선호도 매칭
         if preferred_tier:
             tier_val = preferred_tier.value if hasattr(preferred_tier, "value") else str(preferred_tier)
             tier_matched = [n for n in available_candidates if n.hardware_tier == tier_val]
             if tier_matched:
                 available_candidates = tier_matched
 
-        # Least-Loaded 스코어링
         def score(n: NodeInfo) -> float:
             h = n.latest_health
             avail_ram = h.ram_total_mb - h.ram_used_mb

@@ -12,34 +12,26 @@ from typing import Dict, Any
 
 NODE_ID = os.getenv("NODE_ID", f"worker-{os.uname().nodename}")
 NODE_NAME = os.getenv("NODE_NAME", os.uname().nodename)
-MASTER_ENDPOINT = os.getenv("MASTER_ENDPOINT", "http://localhost:8000")
+MASTER_ENDPOINT = os.getenv("MASTER_ENDPOINT", "http://localhost:8005")
 HARDWARE_TIER = os.getenv("HARDWARE_TIER", "standard_ssd")
 CLUSTER_TOKEN = os.getenv("CLUSTER_TOKEN", "cluster-master-secret-token")
 
 def get_zram_stats() -> Dict[str, int]:
-    """ZRAM 압축 스왑 통계 추출"""
+    """ZRAM 통계 추출 (호환성 보장)"""
     total_zram_mb = 0
     used_zram_mb = 0
     try:
-        out = subprocess.check_output(["zramctl", "--json"], text=True)
-        import json
-        data = json.loads(out)
-        for dev in data.get("zramdevices", []):
-            disksize_str = dev.get("disksize", "0")
-            # Parse disksize
-            if disksize_str.endswith("G"):
-                total_zram_mb += int(float(disksize_str[:-1]) * 1024)
-            elif disksize_str.endswith("M"):
-                total_zram_mb += int(float(disksize_str[:-1]))
-
-            data_str = dev.get("data", "0")
-            if data_str.endswith("G"):
-                used_zram_mb += int(float(data_str[:-1]) * 1024)
-            elif data_str.endswith("M"):
-                used_zram_mb += int(float(data_str[:-1]))
+        sys_zram = "/sys/block"
+        if os.path.exists(sys_zram):
+            for dev in os.listdir(sys_zram):
+                if dev.startswith("zram"):
+                    size_file = os.path.join(sys_zram, dev, "disksize")
+                    if os.path.exists(size_file):
+                        with open(size_file, "r") as f:
+                            total_zram_mb += int(int(f.read().strip()) / (1024 * 1024))
     except Exception:
-        # Fallback via /proc/swaps
         pass
+
     return {"total_mb": total_zram_mb, "used_mb": used_zram_mb}
 
 def collect_host_metrics() -> Dict[str, Any]:
@@ -51,10 +43,9 @@ def collect_host_metrics() -> Dict[str, Any]:
     zram = get_zram_stats()
     nvme_swap_used = max(0, int((swap.used - (zram["used_mb"] * 1024 * 1024)) / (1024 * 1024)))
 
-    # Docker 컨테이너 수 카운트
     running_containers = 0
     try:
-        out = subprocess.check_output(["docker", "ps", "-q"], text=True)
+        out = subprocess.check_output(["docker", "ps", "-q"], text=True, stderr=subprocess.DEVNULL)
         running_containers = len(out.strip().splitlines()) if out.strip() else 0
     except Exception:
         pass
@@ -72,7 +63,6 @@ def collect_host_metrics() -> Dict[str, Any]:
     }
 
 async def register_to_master():
-    """Master에 워커 노드 등록"""
     mem = psutil.virtual_memory()
     zram = get_zram_stats()
     payload = {
@@ -93,7 +83,6 @@ async def register_to_master():
             print(f"[Worker Agent] Register retry pending: {e}")
 
 async def run_telemetry_loop():
-    """5초 주기 헬스체크 리포트 전송"""
     await register_to_master()
     async with httpx.AsyncClient(timeout=5.0) as client:
         while True:
