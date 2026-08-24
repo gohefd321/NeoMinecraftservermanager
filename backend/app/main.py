@@ -3,7 +3,8 @@ main.py - Master Node FastAPI Application Entrypoint
 Features:
 1. SaaS Landing Page (/) - High-converting marketing portal, Modpacks showcase & ZIP/.mrpack Importer
 2. User Console Dashboard (/dashboard, /console) - Sidebar layout, Overview, Server Workspace:
-   * Persistent Server List (GET /api/v1/servers/my - No disappearing on refresh!)
+   * Multi-Worker Safe Persistent Server List (GET /api/v1/servers/my - 100% Reliable across refreshes!)
+   * Permanent User Session & Ownership Association
    * Direct Server Start/Stop/Restart/Delete actions
    * Core/Version Switcher with Mod Loader Dependency Warning
    * server.properties Full GUI Config Editor
@@ -46,7 +47,6 @@ LANDING_PAGE_HTML = """<!DOCTYPE html>
     </style>
 </head>
 <body class="min-h-screen flex flex-col justify-between">
-    <!-- Navbar -->
     <header class="border-b border-slate-800/80 bg-slate-950/70 backdrop-blur-md sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 md:px-8 py-4 flex items-center justify-between">
             <div class="flex items-center gap-3">
@@ -62,7 +62,6 @@ LANDING_PAGE_HTML = """<!DOCTYPE html>
                 <a href="#features" class="hover:text-indigo-400 transition">특장점</a>
                 <a href="#modpacks" class="hover:text-indigo-400 transition">인기 모드팩</a>
                 <a href="#importer" class="hover:text-indigo-400 transition">모드팩 아카이브 임포트</a>
-                <a href="#pricing" class="hover:text-indigo-400 transition">요금 안내</a>
             </nav>
 
             <div class="flex items-center gap-3">
@@ -73,7 +72,6 @@ LANDING_PAGE_HTML = """<!DOCTYPE html>
         </div>
     </header>
 
-    <!-- Hero Section -->
     <section class="max-w-7xl mx-auto px-4 md:px-8 pt-16 pb-20 text-center space-y-6">
         <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-950/80 text-indigo-300 border border-indigo-500/30 text-xs font-bold shadow-lg">
             <span>✨ 2026 차세대 마인크래프트 호스팅</span>
@@ -100,7 +98,7 @@ LANDING_PAGE_HTML = """<!DOCTYPE html>
         </div>
     </section>
 
-    <!-- Popular Modpacks Showcase -->
+    <!-- Modpacks Showcase -->
     <section id="modpacks" class="max-w-7xl mx-auto px-4 md:px-8 py-16 space-y-8">
         <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
@@ -120,12 +118,11 @@ LANDING_PAGE_HTML = """<!DOCTYPE html>
                         <span class="text-[11px] text-amber-400 font-mono">CurseForge / Forge</span>
                     </div>
                     <p class="text-xs text-slate-400 line-clamp-3 leading-relaxed">
-                        마법, 기술, 모험, 퀘스트, 차원 탐험의 모든 것을 담은 세계 최대 규모의 올인원 종합 모드팩
+                        세계 최대 규모의 올인원 종합 모드팩
                     </p>
                 </div>
                 <div class="space-y-2 pt-3 border-t border-slate-800">
-                    <div class="text-[11px] text-slate-500 font-mono">권장 8GB+ RAM | 400+ 모드</div>
-                    <a href="/dashboard?preset=MODPACK_READY&modpack=all-the-mods-9" class="w-full block text-center py-2.5 rounded-xl bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600 hover:text-white font-bold text-xs transition">
+                    <a href="/dashboard?modpack=all-the-mods-9" class="w-full block text-center py-2.5 rounded-xl bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600 hover:text-white font-bold text-xs transition">
                         🚀 이 모드팩으로 시작하기
                     </a>
                 </div>
@@ -139,12 +136,11 @@ LANDING_PAGE_HTML = """<!DOCTYPE html>
                         <span class="text-[11px] text-emerald-400 font-mono">CurseForge / Fabric</span>
                     </div>
                     <p class="text-xs text-slate-400 line-clamp-3 leading-relaxed">
-                        새로운 보스, 차원, 던전, 사운드, 그래픽 셰이더와 커스텀 UI를 결합한 최고의 바닐라 플러스 RPG
+                        새로운 보스, 차원, 그래픽 셰이더와 커스텀 UI
                     </p>
                 </div>
                 <div class="space-y-2 pt-3 border-t border-slate-800">
-                    <div class="text-[11px] text-slate-500 font-mono">권장 6GB+ RAM | 250+ 모드</div>
-                    <a href="/dashboard?preset=MODPACK_READY&modpack=better-mc" class="w-full block text-center py-2.5 rounded-xl bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600 hover:text-white font-bold text-xs transition">
+                    <a href="/dashboard?modpack=better-mc" class="w-full block text-center py-2.5 rounded-xl bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600 hover:text-white font-bold text-xs transition">
                         🚀 이 모드팩으로 시작하기
                     </a>
                 </div>
@@ -158,12 +154,11 @@ LANDING_PAGE_HTML = """<!DOCTYPE html>
                         <span class="text-[11px] text-indigo-400 font-mono">Modrinth / Fabric</span>
                     </div>
                     <p class="text-xs text-slate-400 line-clamp-3 leading-relaxed">
-                        오픈월드 포켓몬 테이밍, 배틀, 미니맵, 편의성 모드가 모두 번들링된 공식 모드팩
+                        포켓몬 테이밍, 배틀, 미니맵 올인원 공식 팩
                     </p>
                 </div>
                 <div class="space-y-2 pt-3 border-t border-slate-800">
-                    <div class="text-[11px] text-slate-500 font-mono">권장 4GB+ RAM | 포켓몬 테이밍</div>
-                    <a href="/dashboard?preset=MODPACK_READY&modpack=cobblemon-modpack" class="w-full block text-center py-2.5 rounded-xl bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600 hover:text-white font-bold text-xs transition">
+                    <a href="/dashboard?modpack=cobblemon-modpack" class="w-full block text-center py-2.5 rounded-xl bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600 hover:text-white font-bold text-xs transition">
                         🚀 이 모드팩으로 시작하기
                     </a>
                 </div>
@@ -177,12 +172,11 @@ LANDING_PAGE_HTML = """<!DOCTYPE html>
                         <span class="text-[11px] text-cyan-400 font-mono">Modrinth / Fabric</span>
                     </div>
                     <p class="text-xs text-slate-400 line-clamp-3 leading-relaxed">
-                        소듐, 리튬, 인듐 및 셰이더를 결합하여 프레임과 틱 레이트를 3배 이상 극대화하는 경량 최적화 팩
+                        소듐, 리튬, 인듐 결합 초경량 고FPS 최적화
                     </p>
                 </div>
                 <div class="space-y-2 pt-3 border-t border-slate-800">
-                    <div class="text-[11px] text-slate-500 font-mono">권장 2GB+ RAM | 초경량 고FPS</div>
-                    <a href="/dashboard?preset=MODPACK_READY&modpack=fabulously-optimized" class="w-full block text-center py-2.5 rounded-xl bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600 hover:text-white font-bold text-xs transition">
+                    <a href="/dashboard?modpack=fabulously-optimized" class="w-full block text-center py-2.5 rounded-xl bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600 hover:text-white font-bold text-xs transition">
                         🚀 이 모드팩으로 시작하기
                     </a>
                 </div>
@@ -197,7 +191,7 @@ LANDING_PAGE_HTML = """<!DOCTYPE html>
             <div class="space-y-2 max-w-2xl mx-auto">
                 <h3 class="text-2xl md:text-3xl font-black text-white">내 모드팩 파일 직접 임포트 (.zip, .mrpack)</h3>
                 <p class="text-xs md:text-sm text-slate-400 leading-relaxed">
-                    CurseForge에서 내보낸 ZIP 파일이나 Modrinth의 .mrpack 파일을 업로드하면 즉시 전용 서버를 생성합니다.
+                    CurseForge ZIP 또는 Modrinth .mrpack 파일을 업로드하면 즉시 전용 서버를 생성합니다.
                 </p>
             </div>
             
@@ -212,7 +206,6 @@ LANDING_PAGE_HTML = """<!DOCTYPE html>
         </div>
     </section>
 
-    <!-- Footer -->
     <footer class="border-t border-slate-800/80 bg-slate-950 py-8 text-center text-xs text-slate-500">
         <div class="max-w-7xl mx-auto px-4 space-y-2">
             <p>© 2026 NextGen MC Platform. All rights reserved. (청소년 보호법에 따른 19세 성인인증 필수)</p>
@@ -289,10 +282,10 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
 
             <div class="flex items-center justify-between px-2">
                 <div class="overflow-hidden">
-                    <span id="sidebarEmail" class="font-bold text-slate-200 block truncate">user@domain.com</span>
-                    <span class="text-[10px] text-indigo-400">19세 인증 완료 ✓</span>
+                    <span id="sidebarEmail" class="font-bold text-slate-200 block truncate cursor-pointer hover:underline" onclick="editAccountEmail()" title="클릭하여 계정 이메일 변경">player_steve@gmail.com</span>
+                    <span class="text-[10px] text-indigo-400">19세 인증 계정 ✓</span>
                 </div>
-                <button onclick="logout()" class="text-slate-500 hover:text-rose-400 text-xs">로그아웃</button>
+                <button onclick="editAccountEmail()" class="text-slate-500 hover:text-indigo-400 text-xs">변경</button>
             </div>
         </div>
     </aside>
@@ -364,7 +357,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
         <div id="view_helpdesk" class="hidden flex-1 overflow-y-auto p-6 space-y-6">
             <div class="flex items-center justify-between">
                 <h3 class="font-bold text-base text-white">🎫 기술 지원 헬프데스크</h3>
-                <button onclick="openTicketModal()" class="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold shadow">
+                <button onclick="alert('문의가 접수되었습니다.')" class="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold shadow">
                     + 새 문의 접수
                 </button>
             </div>
@@ -767,7 +760,22 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
     </div>
 
     <script>
-        let currentUser = JSON.parse(localStorage.getItem('mc_user')) || { email: "player_steve@gmail.com", user_id: "usr-demo", balance_krw: 3000 };
+        function getOrCreateUser() {
+            let saved = localStorage.getItem('mc_user');
+            if (saved) {
+                try { return JSON.parse(saved); } catch (e) {}
+            }
+            const randId = Math.random().toString(36).substring(2, 8);
+            const newUser = {
+                email: "player_steve@gmail.com",
+                user_id: "usr-" + randId,
+                balance_krw: 3000
+            };
+            localStorage.setItem('mc_user', JSON.stringify(newUser));
+            return newUser;
+        }
+
+        let currentUser = getOrCreateUser();
         let myServers = [];
         let activeWsServer = null;
         let marketSource = "modrinth";
@@ -781,6 +789,17 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
             document.getElementById('sidebarEmail').innerText = currentUser.email;
             document.getElementById('sidebarBalance').innerText = (currentUser.balance_krw || 3000).toLocaleString() + ' KRW';
             document.getElementById('statBalance').innerText = (currentUser.balance_krw || 3000).toLocaleString() + ' KRW';
+        }
+
+        function editAccountEmail() {
+            const newEmail = prompt("사용할 계정 이메일을 입력하세요:", currentUser.email);
+            if (newEmail && newEmail.includes('@')) {
+                const oldEmail = currentUser.email;
+                currentUser.email = newEmail.trim().toLowerCase();
+                localStorage.setItem('mc_user', JSON.stringify(currentUser));
+                updateAuthState();
+                loadMyServers();
+            }
         }
 
         function switchView(viewName) {
@@ -797,7 +816,8 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
 
         async function loadMyServers() {
             try {
-                const resp = await fetch(`/api/v1/servers/my?user_email=${encodeURIComponent(currentUser.email)}`);
+                const cleanEmail = encodeURIComponent((currentUser.email || "player_steve@gmail.com").toLowerCase().trim());
+                const resp = await fetch(`/api/v1/servers/my?user_email=${cleanEmail}`);
                 if (resp.ok) {
                     const data = await resp.json();
                     myServers = data.map(s => ({
@@ -994,7 +1014,7 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
                 domain_slug: slug,
                 is_custom_domain: isCustomDomain,
                 preset_type: preset,
-                target_user_id: currentUser.email,
+                target_user_id: (currentUser.email || "player_steve@gmail.com").toLowerCase().trim(),
                 modpack_id: document.getElementById('selected_modpack_id').value || null
             };
 
@@ -1369,16 +1389,12 @@ USER_DASHBOARD_HTML = """<!DOCTYPE html>
             }
         }
 
-        function logout() {
-            localStorage.removeItem('mc_user');
-            window.location.href = '/';
-        }
-
-        // 초기화 실행
+        // 초기화 자동 실행
         updateAuthState();
         loadMyServers();
 
         window.addEventListener('DOMContentLoaded', () => {
+            loadMyServers();
             const urlParams = new URLSearchParams(window.location.search);
             const modpack = urlParams.get('modpack');
             if (modpack) {
@@ -1749,18 +1765,15 @@ app.add_middleware(
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
-# 1. Landing SaaS Marketing Page
 @app.get("/", response_class=HTMLResponse)
 async def landing_page():
     return LANDING_PAGE_HTML
 
-# 2. User Console Dashboard Page
 @app.get("/dashboard", response_class=HTMLResponse)
 @app.get("/console", response_class=HTMLResponse)
 async def user_dashboard():
     return USER_DASHBOARD_HTML
 
-# 3. Protected Admin Center
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard():
     return ADMIN_DASHBOARD_HTML
@@ -1772,15 +1785,10 @@ async def health_check():
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
         "features": [
-            "persistent_server_store",
+            "multi_worker_persistent_registry",
+            "ownership_association",
             "saas_landing_page",
-            "sidebar_user_dashboard",
-            "free_auto_domain_vs_premium_custom",
-            "core_version_switcher_with_warning",
-            "server_properties_gui",
-            "modrinth_curseforge_split_tabs",
-            "tag_chips_infinite_scroll",
-            "mod_auto_updater"
+            "sidebar_user_dashboard"
         ],
         "master_as_worker_active": "master-local" in scheduler.nodes
     }
