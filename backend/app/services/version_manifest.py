@@ -1,32 +1,26 @@
 """
-version_manifest.py - Robust Mojang Official Version Manifest Resolver
-Filters only valid Minecraft version formats (e.g. 1.20.4, 1.20.2, 1.16.5, 24w09a, 1.21-pre1)
-and guards against any unexpected API formats.
+version_manifest.py - Real-Time Mojang Official Version Manifest Resolver
+Fetches and provides all official releases (e.g. 26.2, 1.20.4, 1.16.5) and snapshots (e.g. 26.3-snapshot-9)
+directly from Mojang API with intelligent caching.
 """
-import re
 import time
 import httpx
 from typing import Dict, List, Any, Optional
 
 MOJANG_MANIFEST_URL = "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json"
 
-# 유효한 마인크래프트 버전 정규식 (1.x.x 또는 2xWxxa 스냅샷)
-VALID_RELEASE_REGEX = re.compile(r"^1\.\d+(\.\d+)?$")
-VALID_SNAPSHOT_REGEX = re.compile(r"^(\d{2}w\d{2}[a-z]|1\.\d+(\.\d+)?-(pre|rc)\d+)$")
-
 class VersionManifestService:
     def __init__(self):
         self._cached_manifest: Optional[Dict[str, Any]] = None
         self._last_fetched: float = 0.0
-        self._cache_ttl_seconds: int = 3600  # 1 hour cache
+        self._cache_ttl_seconds: int = 1800  # 30 min cache
 
         # Fallback reliable list
         self._fallback_releases = [
-            "1.20.4", "1.20.2", "1.20.1", "1.19.4", "1.19.2",
-            "1.18.2", "1.17.1", "1.16.5", "1.12.2", "1.8.9", "1.7.10"
+            "26.2", "26.1.2", "26.1.1", "26.1", "1.20.4", "1.20.2", "1.20.1", "1.19.4", "1.16.5", "1.12.2"
         ]
         self._fallback_snapshots = [
-            "24w14a", "24w13a", "24w09a", "1.21-pre1", "1.20.5-pre2"
+            "26.3-snapshot-9", "26.3-snapshot-8", "26.2-rc-2", "24w14a"
         ]
 
     async def get_version_manifest(self, force_refresh: bool = False) -> Dict[str, Any]:
@@ -35,52 +29,38 @@ class VersionManifestService:
             return self._cached_manifest
 
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with httpx.AsyncClient(timeout=6.0) as client:
                 resp = await client.get(MOJANG_MANIFEST_URL)
                 if resp.status_code == 200:
                     data = resp.json()
+                    latest = data.get("latest", {})
                     all_versions = data.get("versions", [])
 
-                    # 정규식으로 유효한 버전만 엄격하게 필터링
-                    filtered_releases = []
-                    filtered_snapshots = []
+                    releases = [v["id"] for v in all_versions if v.get("type") == "release"]
+                    snapshots = [v["id"] for v in all_versions if v.get("type") == "snapshot"]
 
-                    for v in all_versions:
-                        v_id = v.get("id", "")
-                        v_type = v.get("type", "")
-                        if v_type == "release" and VALID_RELEASE_REGEX.match(v_id):
-                            filtered_releases.append(v_id)
-                        elif v_type == "snapshot" and (VALID_SNAPSHOT_REGEX.match(v_id) or VALID_RELEASE_REGEX.match(v_id)):
-                            filtered_snapshots.append(v_id)
-
-                    # 기본 릴리즈가 없으면 fallback 주입
-                    if not filtered_releases:
-                        filtered_releases = self._fallback_releases
-                    if not filtered_snapshots:
-                        filtered_snapshots = self._fallback_snapshots
-
-                    latest_rel = filtered_releases[0] if filtered_releases else "1.20.4"
-                    latest_snap = filtered_snapshots[0] if filtered_snapshots else "24w14a"
+                    latest_rel = latest.get("release") or (releases[0] if releases else "26.2")
+                    latest_snap = latest.get("snapshot") or (snapshots[0] if snapshots else "26.3-snapshot-9")
 
                     manifest = {
                         "latest_release": latest_rel,
                         "latest_snapshot": latest_snap,
-                        "releases": filtered_releases[:40],
-                        "snapshots": filtered_snapshots[:30],
-                        "all_releases_count": len(filtered_releases),
-                        "all_snapshots_count": len(filtered_snapshots),
-                        "total_versions": len(filtered_releases) + len(filtered_snapshots),
-                        "source": "mojang_official_filtered"
+                        "releases": releases[:50],       # Top 50 releases
+                        "snapshots": snapshots[:40],     # Top 40 snapshots
+                        "all_releases_count": len(releases),
+                        "all_snapshots_count": len(snapshots),
+                        "total_versions": len(all_versions),
+                        "source": "mojang_official_live"
                     }
                     self._cached_manifest = manifest
                     self._last_fetched = now
                     return manifest
         except Exception as e:
-            print(f"[VersionManifest] Warning: Failed to fetch Mojang manifest ({e}). Using reliable fallback.")
+            print(f"[VersionManifest] Warning: Failed to fetch Mojang manifest ({e}). Using fallback.")
 
         fallback_manifest = {
-            "latest_release": "1.20.4",
-            "latest_snapshot": "24w14a",
+            "latest_release": "26.2",
+            "latest_snapshot": "26.3-snapshot-9",
             "releases": self._fallback_releases,
             "snapshots": self._fallback_snapshots,
             "all_releases_count": len(self._fallback_releases),

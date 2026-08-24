@@ -16,25 +16,23 @@ RCON_PORT="${3:-25575}"
 RAM_MB="${4:-4096}"
 SWAP_TOTAL_MB="${5:-6144}"
 SERVER_TYPE="${6:-PAPER}"
-MC_VERSION="${7:-1.20.4}"
+MC_VERSION="${7:-26.2}"
 RCON_PASS="${8:-SafeRconKey999!}"
 ENABLE_CROSSPLAY="${9:-false}"
 
-# 버전 안전 검증 (정상 형식이 아니면 1.20.4로 자동 교정)
-if [[ ! "$MC_VERSION" =~ ^(1\.[0-9]+(\.[0-9]+)?|[0-9]{2}w[0-9]{2}[a-z]|1\.[0-9]+-pre[0-9]+|latest)$ ]]; then
-    echo "⚠️ [Warning] Invalid MC version format '${MC_VERSION}' detected. Fallback to 1.20.4 LTS."
-    MC_VERSION="1.20.4"
-fi
-
+# 데이터 저장 디렉토리 생성 (권한 실패 시 fallback)
 DATA_DIR="/var/mc_servers/${SERVER_ID}"
-mkdir -p "${DATA_DIR}"
+if ! mkdir -p "${DATA_DIR}" 2>/dev/null; then
+    DATA_DIR="/tmp/mc_servers/${SERVER_ID}"
+    mkdir -p "${DATA_DIR}" 2>/dev/null || true
+fi
 
 echo "================================================================================"
 echo ">>> [Deploying Hardened Container] ID: ${SERVER_ID} on Port ${HOST_PORT}"
 echo "    Core: ${SERVER_TYPE} | MC Version: ${MC_VERSION} | RAM: ${RAM_MB}MB | Swap: ${SWAP_TOTAL_MB}MB"
 echo "================================================================================"
 
-# 1. Java 21 Generational ZGC & Optimized Aikar's Flags
+# 1. Java 21+ Generational ZGC & Optimized Aikar's Flags
 HEAP_MB=$((RAM_MB * 85 / 100))
 
 JVM_FLAGS=(
@@ -52,7 +50,6 @@ JVM_FLAGS=(
     "-Dcom.mojang.eula.agree=true"
 )
 
-# Folia 특수 플래그
 if [ "${SERVER_TYPE}" = "FOLIA" ]; then
     JVM_FLAGS+=("-Dpaper.use-optimized-compact=true")
 fi
@@ -63,7 +60,7 @@ JVM_OPTS_STR="${JVM_FLAGS[*]}"
 EXTRA_ENV_ARGS=()
 if [ "$ENABLE_CROSSPLAY" = "true" ] && [ "${SERVER_TYPE}" != "VANILLA" ]; then
     EXTRA_ENV_ARGS+=(
-        "-e" "SPIGET_RESOURCES=24490,27448" # ViaVersion, ViaBackwards
+        "-e" "SPIGET_RESOURCES=24490,27448"
     )
 fi
 
@@ -135,7 +132,7 @@ if [ "${SERVER_TYPE}" = "VELOCITY" ] || [ "${SERVER_TYPE}" = "BUNGEECORD" ] || [
         -e TYPE="${ITZG_TYPE}" \
         -e VERSION="${MC_VERSION}" \
         -e MEMORY="${HEAP_MB}M" \
-        itzg/minecraft-server:java21
+        itzg/minecraft-server:latest
 else
     docker run -d \
         --name "${SERVER_ID}" \
@@ -160,7 +157,7 @@ else
         -e RCON_PASSWORD="${RCON_PASS}" \
         -e RCON_PORT=25575 \
         "${EXTRA_ENV_ARGS[@]}" \
-        itzg/minecraft-server:java21
+        itzg/minecraft-server:latest
 fi
 
 echo ">>> [SUCCESS] Container ${SERVER_ID} (${SERVER_TYPE} ${MC_VERSION}) deployed successfully."

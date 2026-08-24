@@ -1,13 +1,12 @@
 """
 servers.py - Minecraft Server Management Supporting:
-- All Versions (Releases + Snapshots from Mojang Manifest)
+- All Real-Time Versions (including 26.2, 26.1, 26.3-snapshot, 1.20.4 from Mojang Manifest)
 - Core Types: PAPER, PURPUR, FOLIA, FABRIC, FORGE, NEOFORGE, SPONGE, VANILLA, SPIGOT, CRAFTBUKKIT, VELOCITY, BUNGEECORD
 - Dynamic Custom Tiers & Swap Ratios
 - Presets & Web RCON & AI Profiler
 """
 import uuid
 import os
-import re
 import subprocess
 import asyncio
 from datetime import datetime
@@ -28,8 +27,6 @@ from app.services.version_manifest import version_service
 
 router = APIRouter(prefix="/servers", tags=["Minecraft Servers & Helpdesk"])
 
-VALID_VER_REGEX = re.compile(r"^(1\.\d+(\.\d+)?|\d{2}w\d{2}[a-z]|1\.\d+-pre\d+|latest)$")
-
 # In-memory Mock Stores
 MOCK_SERVERS: Dict[str, Dict[str, Any]] = {
     "mc-demo-01": {
@@ -43,7 +40,7 @@ MOCK_SERVERS: Dict[str, Dict[str, Any]] = {
         "rcon_port": 25575,
         "rcon_password": "SafeRconPassword123!",
         "server_type": ServerType.PAPER,
-        "mc_version": "1.20.4",
+        "mc_version": "26.2",
         "allocated_ram_mb": 4096,
         "status": ServerStatus.RUNNING,
         "billing_multiplier": 1.0,
@@ -78,7 +75,7 @@ MOCK_TICKETS: Dict[str, Dict[str, Any]] = {
 # ---------------------------------------------------------------------------
 @router.get("/versions")
 async def get_available_mc_versions(refresh: bool = False):
-    """모장(Mojang) 공식 API에서 정규 릴리즈 및 개발 스냅샷(Snapshots) 목록 조회"""
+    """모장(Mojang) 공식 API에서 정규 릴리즈(26.2 등) 및 최신 스냅샷 목록 조회"""
     manifest = await version_service.get_version_manifest(force_refresh=refresh)
     return manifest
 
@@ -134,21 +131,19 @@ def deploy_local_container(server_data: Dict[str, Any], req: ServerDeployRequest
 async def deploy_server(req: ServerDeployRequest):
     """
     마인크래프트 서버 또는 프록시(Velocity/Bungee) 배포
-    - 버전 검증 및 1.20.4 기본 안정화 가드 탑재
+    - 버전: 26.2, 26.1, 26.3-snapshot, 1.20.4 등 모장 및 사용자가 요청한 모든 버전 그대로 배포
     - 전체 12대 구동기 및 스냅샷 지원
     """
     injected_plugins = []
-    actual_version = req.mc_version
+    actual_version = req.mc_version or "26.2"
     actual_server_type = req.server_type.value if hasattr(req.server_type, "value") else str(req.server_type)
 
-    # 1. 프리셋별 코어 및 버전 자동 보정
+    # 프리셋별 플러그인 구성
     if req.preset_type == ServerPreset.BUILDER_FLAT:
         actual_server_type = "PAPER"
-        actual_version = "1.20.4"
         injected_plugins = ["FastAsyncWorldEdit", "CoreProtect", "Chunky", "Spark"]
     elif req.preset_type == ServerPreset.SURVIVAL_SMP:
         actual_server_type = "PAPER"
-        actual_version = "1.20.4"
         injected_plugins = ["EssentialsX (TPA, Spawn, Home)", "Chunky", "Spark"]
     elif actual_server_type == "VELOCITY":
         actual_version = "latest"
@@ -156,11 +151,6 @@ async def deploy_server(req: ServerDeployRequest):
     elif actual_server_type in ("BUNGEECORD", "WATERFALL"):
         actual_version = "latest"
         injected_plugins = ["BungeeGuard", "RedisBungee"]
-    else:
-        # 버전 정규식 검증 (비정상 버전이 들어오면 1.20.4로 자동 교정)
-        if not actual_version or not VALID_VER_REGEX.match(actual_version):
-            print(f"[Deploy Warning] Invalid MC version detected ('{actual_version}'). Fallback to 1.20.4.")
-            actual_version = "1.20.4"
 
     assigned_node = scheduler.select_best_node(
         required_ram_mb=req.allocated_ram_mb,
